@@ -59,7 +59,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const [picking, setPicking] = useState<Target[]>([]);
   const [viewing, setViewing] = useState<ObjectId | null>(null);
   const [pile, setPile] = useState<{ p: PlayerId; pile: 'graveyard' | 'exile' } | null>(null);
-  const [menu, setMenu] = useState<'menu' | 'log' | 'undo' | null>(null);
+  const [menu, setMenu] = useState<'menu' | 'log' | 'undo' | 'ahead' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [folded, setFolded] = useState(false);
   // Answers being built for the engine's decision; reset whenever the decision changes.
@@ -71,6 +71,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const [split, setSplit] = useState<Record<string, number>>({});
   const [modes, setModes] = useState<number[]>([]);
   const [x, setX] = useState(0);
+  const [hold, setHold] = useState(false);
 
   useEffect(() => {
     setAtk(new Set()); setBlocks(new Map()); setArmed(null); setChosen([]); setPicking([]);
@@ -80,8 +81,8 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   }, [s.seq]);
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t); } return undefined; }, [toast]);
 
-  const send = (c: Choice, fromBar = false) => {
-    const next = choose(session, c, fromBar);
+  const send = (c: Choice, opts: Parameters<typeof choose>[2] = {}) => {
+    const next = choose(session, c, opts);
     if ('refused' in next) { setToast(next.refused); return false; }
     setIntent(null); setPicking([]); setViewing(null);
     onChange(next);
@@ -94,6 +95,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const startIntent = (i: Intent, drop: Target | null = null) => {
     if (!actor) return;
     setViewing(null); setModes([]); setX(0); setPicking([]);
+    setHold(false);
     setIntent(withDrop(s, actor, i, drop));
   };
   const pickTarget = (t: Target) => {
@@ -246,7 +248,10 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
             <div class="prompt">
               <p><b>{intent.kind === 'cast' ? `Cast ${name}` : `Activate ${name}`}</b>{intent.targets.flat().length > 0 && <span> · target {intent.targets.flat().map((t) => (t === 'p1' || t === 'p2' ? playerName(s, t) : nameOf(s, t))).join(', ')}</span>}</p>
               <p class="dim">Cost {cost || 'none'}{preview ? ` · taps ${preview.tapped.map((id) => nameOf(s, id)).join(', ') || 'nothing'}${preview.floating ? ` · ${preview.floating} floating` : ''}` : ' · not enough mana'}</p>
-              <div class="row">{cancel}<button class="btn primary" onClick={() => send(toChoice(intent))} data-testid="confirm">{intent.kind === 'cast' ? 'Cast' : 'Activate'}</button></div>
+              <div class="row">
+                <label class="hold"><input type="checkbox" checked={hold} onChange={(e) => setHold((e.target as HTMLInputElement).checked)} /> Hold priority</label>
+                {cancel}<button class="btn primary" onClick={() => send(toChoice(intent), { hold })} data-testid="confirm">{intent.kind === 'cast' ? 'Cast' : 'Activate'}</button>
+              </div>
             </div>
           );
         }
@@ -384,7 +389,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       return (
         <div class="foot handoff" data-testid="handoff">
           <span class="say"><b class={`who ${actor}`}>{playerName(s, actor)} to act</b>: {asking(s)}</span>
-          {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, true)} data-testid="bar-pass">Pass</button>}
+          {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-testid="bar-pass">Pass</button>}
           <button class="btn primary" onClick={() => onChange(look(session))} data-testid="look">Look</button>
         </div>
       );
@@ -394,6 +399,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
         <span class="say">{d.kind === 'priority' && !intent ? <>Pass: <b>{passMeaning(s)}</b></> : <b>{playerName(s, d.player)}</b>}</span>
         <button class="btn" disabled={!canUndo(session.game)} onClick={askUndo} data-testid="undo">Undo</button>
         <button class="btn" onClick={() => setMenu('menu')} data-testid="menu">☰</button>
+        {d.kind === 'priority' && !intent && <button class="btn" onClick={() => setMenu('ahead')} data-testid="pass-ahead">»</button>}
         {d.kind === 'priority' && !intent && <button class="btn primary" onClick={() => send({ kind: 'pass' })} data-testid="pass">Pass</button>}
       </div>
     );
@@ -424,7 +430,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
 
   return (
     <div class="game" data-facing={me}>
-      <Board s={s} bottom={me} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(orderBand ? { band: orderBand } : {})} />
+      <Board s={s} ahead={session.game.ahead ?? {}} bottom={me} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(orderBand ? { band: orderBand } : {})} />
       {prompt}
       {footer}
       {toast && <div class="toast" data-testid="toast" onClick={() => setToast(null)}>{toast}</div>}
@@ -441,6 +447,15 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
             <button class="btn" disabled={!canRedo(session.game)} onClick={() => { setMenu(null); onChange(redoLast(session)); }}>Redo</button>
             <button class="btn" onClick={() => { setFolded(true); setMenu(null); }}>Hide my hand</button>
             <button class="btn" onClick={onExit} data-testid="quit">Leave game (it stays saved)</button>
+          </div>
+        </Sheet>
+      )}
+      {menu === 'ahead' && (
+        <Sheet title="Pass ahead" onClose={() => setMenu(null)}>
+          <p class="dim">Both players will see it on your stats bar, as saying "no responses" would at a table.</p>
+          <div class="menu">
+            <button class="btn" onClick={() => { setMenu(null); send({ kind: 'pass' }, { ahead: 'combat' }); }} data-testid="pass-combat">Pass this combat</button>
+            <button class="btn" onClick={() => { setMenu(null); send({ kind: 'pass' }, { ahead: 'turn' }); }} data-testid="pass-turn">Pass until end of turn</button>
           </div>
         </Sheet>
       )}

@@ -4,9 +4,10 @@
  * faces, and their hand. Components only lay out the view model; taps go to the game screen.
  */
 import type { ComponentChildren } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { GameState, ObjectId, PlayerId, Target } from '../engine/types';
 import { other } from '../engine/types';
+import { stillPassing, type PassAhead } from '../host/controller';
 import { battlefieldRow, imageOf, landsStrip, stackItems, stats, targetRings, turnLine, type Permanent } from './model';
 
 /** What the board highlights, and where taps go. */
@@ -38,8 +39,8 @@ function Rings({ list }: { list: { n: number; controller: PlayerId }[] | undefin
   return <span class="rings">{list.map((r) => <span key={r.n} class={`ring ${r.controller}`}>◎{r.n}</span>)}</span>;
 }
 
-function StatsBar({ s, p, mine, handHidden, marks, rings, h }: {
-  s: GameState; p: PlayerId; mine: boolean; handHidden: boolean; marks: Marks;
+function StatsBar({ s, p, mine, handHidden, marks, rings, h, ahead }: {
+  s: GameState; p: PlayerId; mine: boolean; handHidden: boolean; marks: Marks; ahead: PassAhead | undefined;
   rings: ReturnType<typeof targetRings>; h: BoardHandlers;
 }) {
   const st = stats(s, p);
@@ -52,6 +53,7 @@ function StatsBar({ s, p, mine, handHidden, marks, rings, h }: {
         Hand <b>{st.hand}</b>{mine && handHidden ? ' · hidden' : ''}
       </button>
       <Rings list={rings.get(p)} />
+      {stillPassing(s, ahead) && <span class="passing" data-testid={`passing-${p}`}>passes {ahead!.until === 'combat' ? 'this combat' : 'this turn'}</span>}
       <span class="icons">
         <span class="ic">Lib <b>{st.library}</b></span>
         <button class="ic" onClick={(e) => { e.stopPropagation(); h.onPile(p, 'graveyard'); }} data-testid={`grave-${p}`}>Grave <b>{st.graveyard}</b>{st.lessons ? ` L${st.lessons}` : ''}</button>
@@ -149,6 +151,7 @@ function Band({ s, lit, marks, h, children }: { s: GameState; lit: boolean; mark
               <span class="st">
                 {it.n === 1 && <span class="first">resolves first</span>}
                 <b>{it.name}</b>
+                {it.text && <span class="abil">ability: {it.text.length > 48 ? `${it.text.slice(0, 46)}…` : it.text}</span>}
                 <span class={`by ${it.controller}`}>{s.setup.players[it.controller].name}</span>
                 {it.targetsGone ? <span class="gone">target gone: does nothing</span> : it.targets && <span>target {it.targets}</span>}
               </span>
@@ -206,18 +209,65 @@ function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Ma
   );
 }
 
-export function Board({ s, bottom, handShown, handFolded, marks, h, band }: {
-  s: GameState; bottom: PlayerId; handShown: boolean; handFolded: boolean; marks: Marks; h: BoardHandlers;
+/**
+ * One arrow at a time (PRD, "Showing targets"): from a stack item to each of its targets, for the
+ * top item by default or the item last tapped. Positions come from the laid-out board.
+ */
+function Arrows({ s, from, root }: { s: GameState; from: ObjectId | null; root: { current: HTMLDivElement | null } }) {
+  const [lines, setLines] = useState<{ x1: number; y1: number; x2: number; y2: number }[]>([]);
+  const item = from && s.zones.stack.includes(from) ? from : s.zones.stack[s.zones.stack.length - 1];
+  const targets = item ? (s.objects[item]!.targets ?? []).flat() : [];
+  const key = `${s.seq}:${item}:${targets.join()}`;
+  const measure = useRef<() => void>(() => undefined);
+  measure.current = () => {
+    const el = root.current;
+    if (!el || !item || !targets.length) { setLines((l) => (l.length ? [] : l)); return; }
+    const box = el.getBoundingClientRect();
+    const at = (id: string) => el.querySelector(`[data-target="${id}"]`)?.getBoundingClientRect();
+    const a = at(item);
+    if (!a) { setLines([]); return; }
+    setLines(targets.flatMap((t) => {
+      const b = at(t);
+      if (!b) return [];
+      const down = b.top > a.bottom;
+      return [{ x1: a.left + a.width / 2 - box.left, y1: (down ? a.bottom : a.top) - box.top, x2: b.left + b.width / 2 - box.left, y2: (down ? b.top + Math.min(12, b.height / 2) : b.bottom - Math.min(12, b.height / 2)) - box.top }];
+    }));
+  };
+  useLayoutEffect(() => measure.current(), [key]);
+  // Card images load after the first layout and move things, and the flip animation transforms the board: measure again then, and on resize.
+  useLayoutEffect(() => {
+    const el = root.current;
+    const again = () => measure.current();
+    el?.addEventListener('load', again, true);
+    el?.addEventListener('animationend', again);
+    window.addEventListener('resize', again);
+    return () => { el?.removeEventListener('load', again, true); el?.removeEventListener('animationend', again); window.removeEventListener('resize', again); };
+  }, []);
+  if (!lines.length || !item) return null;
+  return (
+    <svg class={`arrow ${s.objects[item]!.controller}`} data-testid="arrow">
+      <defs><marker id="head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" /></marker></defs>
+      {lines.map((l, i) => <line key={i} {...l} marker-end="url(#head)" />)}
+    </svg>
+  );
+}
+
+export function Board({ s, ahead, bottom, handShown, handFolded, marks, h: handlers, band }: {
+  s: GameState; ahead: Partial<Record<PlayerId, PassAhead>>; bottom: PlayerId; handShown: boolean; handFolded: boolean; marks: Marks; h: BoardHandlers;
   /** Replaces the band's contents (ordering triggers). */
   band?: ComponentChildren;
 }) {
   const top = other(bottom);
   const rings = targetRings(s);
   const [lifted, setLifted] = useState(false);
+  const [arrowFrom, setArrowFrom] = useState<ObjectId | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  // Tapping a stack item also points the arrow at its targets.
+  const h: BoardHandlers = { ...handlers, onCard: (id) => { if (s.zones.stack.includes(id)) setArrowFrom(id); handlers.onCard(id); } };
   return (
-    <div class={`board facing-${bottom}`} key={bottom}>
+    <div class={`board facing-${bottom}`} key={bottom} ref={root}>
       <div class={`half opp ${top}`}>
-        <StatsBar s={s} p={top} mine={false} handHidden marks={marks} rings={rings} h={h} />
+        <StatsBar s={s} p={top} mine={false} handHidden marks={marks} rings={rings} h={h} ahead={ahead[top]} />
         <LandsStrip s={s} p={top} marks={marks} h={h} />
         <Field s={s} p={top} marks={marks} rings={rings} h={h} />
       </div>
@@ -225,9 +275,10 @@ export function Board({ s, bottom, handShown, handFolded, marks, h, band }: {
       <div class={`half me ${bottom}`}>
         <Field s={s} p={bottom} marks={marks} rings={rings} h={h} />
         <LandsStrip s={s} p={bottom} marks={marks} h={h} />
-        <StatsBar s={s} p={bottom} mine handHidden={!handShown || handFolded} marks={marks} rings={rings} h={h} />
+        <StatsBar s={s} p={bottom} mine handHidden={!handShown || handFolded} marks={marks} rings={rings} h={h} ahead={ahead[bottom]} />
       </div>
       {handShown && !handFolded ? <Hand s={s} p={bottom} marks={marks} h={h} onLift={setLifted} /> : <div class="hand folded" data-testid="hand-folded" />}
+      <Arrows s={s} from={arrowFrom} root={root} />
     </div>
   );
 }

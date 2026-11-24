@@ -52,7 +52,7 @@ describe('the device session', () => {
     expect(handingOff(x)).toBe(true);
     expect(visibleHand(x)).toBeNull();
     expect('refused' in choose(x, { kind: 'pass' })).toBe(true); // p2 must Look, or pass from the bar
-    x = ok(choose(x, { kind: 'pass' }, true));
+    x = ok(choose(x, { kind: 'pass' }, { fromBar: true }));
     expect(x.facing).toBe('p1');
     expect(visibleHand(x)).toBe('p1');
   });

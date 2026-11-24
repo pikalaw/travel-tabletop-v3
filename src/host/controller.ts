@@ -13,8 +13,13 @@ export interface LoggedChoice { choice: Choice; player: PlayerId; auto: boolean 
 /** Everything needed to rebuild a game exactly. */
 export interface GameRecord { setup: GameSetup; seed: number; choices: LoggedChoice[] }
 
+/** "Pass this combat" or "Pass until end of turn" (PRD, "Passing ahead, out loud"): public, announced on the board. */
+export interface PassAhead { until: 'combat' | 'turn'; turn: number }
+
 export interface Game {
   record: GameRecord;
+  /** Players passing ahead: their priority is passed for them until the announcement runs out. */
+  ahead?: Partial<Record<PlayerId, PassAhead>>;
   /** states[i] is the state after the first i choices; the last one is the current state. */
   states: GameState[];
   /** Choices taken back by undo, newest last, for redo. */
@@ -49,14 +54,26 @@ export function newGame(setup: GameSetup, seed: number): Game {
 function push(g: Game, c: LoggedChoice): Game | Refusal {
   const next = answer(current(g), c.choice);
   if ('refused' in next) return next;
-  return { record: { ...g.record, choices: [...g.record.choices, c] }, states: [...g.states, next], redo: g.redo };
+  return { ...g, record: { ...g.record, choices: [...g.record.choices, c] }, states: [...g.states, next] };
 }
 
-function autoPass(g: Game): Game {
+const COMBAT_STEPS = ['beginCombat', 'attackers', 'blockers', 'firstStrikeDamage', 'damage', 'endCombat'];
+
+/** Whether an announcement still holds: until the turn ends, or until combat this turn is over. */
+export function stillPassing(s: GameState, a: PassAhead | undefined): boolean {
+  if (!a || s.turn !== a.turn) return false;
+  if (a.until === 'turn') return true;
+  return ['upkeep', 'draw', 'main1', ...COMBAT_STEPS].includes(s.step);
+}
+
+/** Passes for players wherever they have no stop or are passing ahead; `hold` keeps one player's next priority (they held it while casting). */
+function autoPass(g: Game, hold?: PlayerId): Game {
   for (;;) {
     const s = current(g);
     const d = s.decision;
-    if (!d || d.kind !== 'priority' || stopsHere(s, d.player)) return g;
+    if (!d || d.kind !== 'priority') return g;
+    if (hold === d.player) return g;
+    if (stopsHere(s, d.player) && !stillPassing(s, g.ahead?.[d.player])) return g;
     const next = push(g, { choice: { kind: 'pass' }, player: d.player, auto: true });
     if ('refused' in next) throw new Error(`the engine refused an automatic pass: ${next.refused}`);
     g = next;
@@ -64,11 +81,19 @@ function autoPass(g: Game): Game {
 }
 
 /** Answers the current decision for whoever it waits on, then passes automatically where nobody stops. */
-export function submit(g: Game, choice: Choice): Game | Refusal {
+export function submit(g: Game, choice: Choice, opts: { hold?: boolean } = {}): Game | Refusal {
   const d = current(g).decision;
   if (!d) return { refused: 'Nothing to decide' };
   const next = push({ ...g, redo: [] }, { choice, player: d.player, auto: false });
-  return 'refused' in next ? next : autoPass(next);
+  return 'refused' in next ? next : autoPass(next, opts.hold ? d.player : undefined);
+}
+
+/** The player with priority passes, and announces passing ahead until end of combat or of the turn. */
+export function passAhead(g: Game, until: PassAhead['until']): Game | Refusal {
+  const s = current(g);
+  const d = s.decision;
+  if (d?.kind !== 'priority') return { refused: 'Only with priority' };
+  return submit({ ...g, ahead: { ...g.ahead, [d.player]: { until, turn: s.turn } } }, { kind: 'pass' });
 }
 
 /** Index of the last choice a player made (not an automatic pass), or -1. */
@@ -89,6 +114,7 @@ export function undo(g: Game): Game {
     record: { ...g.record, choices: g.record.choices.slice(0, i) },
     states: g.states.slice(0, i + 1),
     redo: [...g.redo, g.record.choices[i]!],
+    ahead: {}, // an undo takes back announcements too
   };
 }
 

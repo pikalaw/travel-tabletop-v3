@@ -10,7 +10,7 @@
  * hand-off bar changes nothing.
  */
 import type { Choice, PlayerId, Refusal } from '../engine/types';
-import { current, redo, submit, undo, type Game } from './controller';
+import { current, passAhead, redo, submit, undo, type Game, type PassAhead } from './controller';
 
 export interface Session {
   game: Game;
@@ -45,13 +45,14 @@ export function look(x: Session): Session {
  * Answers the decision. From the hand-off bar (`fromBar`), only a pass, and nothing flips; else the
  * facing player answers their own decision.
  */
-export function choose(x: Session, choice: Choice, fromBar = false): Session | Refusal {
+export function choose(x: Session, choice: Choice, opts: { fromBar?: boolean; hold?: boolean; ahead?: PassAhead['until'] } = {}): Session | Refusal {
   const p = acting(x);
+  const fromBar = !!opts.fromBar;
   if (!p) return { refused: 'Nothing to decide' };
   if (fromBar && choice.kind !== 'pass') return { refused: 'Only a pass can be made without looking' };
   if (!fromBar && handingOff(x)) return { refused: 'Tap Look first' };
   const before = current(x.game).turn;
-  const g = submit(x.game, choice);
+  const g = opts.ahead && choice.kind === 'pass' ? passAhead(x.game, opts.ahead) : submit(x.game, choice, { hold: !!opts.hold });
   if ('refused' in g) return g;
   return settle({ ...x, game: g }, before, fromBar ? null : p);
 }
