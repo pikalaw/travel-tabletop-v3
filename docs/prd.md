@@ -125,7 +125,7 @@ The one choice left is an attacker blocked by two or more creatures. Since the 2
 
 **State-based actions,** checked whenever a player would get priority:
 
-- A player loses at 0 life, at 10 poison, or on drawing from an empty library.
+- A player loses at 0 life, or on drawing from an empty library.
 - A creature with 0 toughness, or with lethal damage, dies.
 - The legend rule applies.
 - +1/+1 and −1/−1 counters on the same permanent cancel in pairs.
@@ -152,17 +152,17 @@ The pool is 343 different cards in 76 twenty-card packets, plus 11 tokens, from 
 
 **The set's mechanics,** by how many cards use each:
 
-| Mechanic                | Cards                            | What the engine needs                                                                                                                                 |
-|-------------------------|----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Allies (creature type)  | 79                               | Type checks and counts ("for each Ally you control", affinity for Allies)                                                                             |
-| Lessons (spell subtype) | 42, and 24 cards that count them | Counting Lesson cards in a graveyard                                                                                                                  |
-| Earthbend N             | 21                               | A land becomes a 0/0 creature with haste and N +1/+1 counters; when it dies or is exiled it returns tapped (type change, counters, a delayed trigger) |
-| Firebending N           | 21                               | An attack trigger that adds {R} which lasts until end of combat instead of emptying between steps                                                     |
-| Waterbend {N}           | 17                               | A cost you may help pay by tapping your artifacts and creatures, {1} each (like convoke)                                                              |
-| Airbend                 | 9                                | Exile a permanent; while exiled, its owner may cast it for {2} instead of its mana cost                                                               |
-| Food, Clue              | 28                               | Predefined tokens with sacrifice abilities                                                                                                            |
-| Exhaust                 | 6                                | An activated ability usable once                                                                                                                      |
-| Stun counters           | several                          | Replacement: a stunned permanent stays tapped instead of untapping, losing one stun counter                                                           |
+| Mechanic                | Cards                               | What the engine needs                                                                                                                                 |
+|-------------------------|-------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Allies (creature type)  | 79                                  | Type checks and counts ("for each Ally you control", affinity for Allies)                                                                             |
+| Lessons (spell subtype) | 42, and 23 cards that refer to them | Counting Lesson cards in a graveyard                                                                                                                  |
+| Earthbend N             | 21                                  | A land becomes a 0/0 creature with haste and N +1/+1 counters; when it dies or is exiled it returns tapped (type change, counters, a delayed trigger) |
+| Firebending N           | 20                                  | An attack trigger that adds {R} which lasts until end of combat instead of emptying between steps                                                     |
+| Waterbend {N}           | 17                                  | A cost you may help pay by tapping your artifacts and creatures, {1} each (like convoke)                                                              |
+| Airbend                 | 9                                   | Exile a permanent; while exiled, its owner may cast it for {2} instead of its mana cost                                                               |
+| Food, Clue              | 28                                  | Predefined tokens with sacrifice abilities                                                                                                            |
+| Exhaust                 | 6                                   | An activated ability usable once                                                                                                                      |
+| Stun counters           | several                             | Replacement: a stunned permanent stays tapped instead of untapping, losing one stun counter                                                           |
 
 **Other rules the pool needs:**
 
@@ -176,16 +176,19 @@ The pool is 343 different cards in 76 twenty-card packets, plus 11 tokens, from 
 - **Counter kinds:** experience, quest and lore counters.
 - **Memory:** "this turn" facts (29 cards).
 
-**Rules the pool never touches, which the engine can leave out:** planeswalkers, battles, double-faced cards, control changes, extra turns or combats, damage prevention, Phyrexian mana, switching power and toughness. Layer dependencies are unlikely to be needed (to confirm in the scan of every card).
+**Rules the pool never touches, which the engine can leave out:** planeswalkers, battles, double-faced cards, control-changing effects, extra turns or combats, damage prevention, poison, Phyrexian mana, switching power and toughness. Each was checked by searching the whole pool for it. Two near misses the engine must still model: an owner who isn't the controller (Fire Nation Salvagers puts the opponent's card onto your battlefield; Fire Lord Ozai and Hama cast the opponent's cards), and layer dependencies (613.8), which Honest Work needs (below).
 
-**Hard cards,** the ones that set the size of the work:
+**Hard cards.** The M0 scan ([docs/card-scan.md](./card-scan.md)) read every ability line in the pool and lists 38 cards whose rules go beyond the effect vocabulary, sized as 2 large (a week or more), 9 medium (a few days) and 27 small (a day or less). The large and medium ones:
 
-- **Copy effects:** Joo Dee and Ran and Shaw (token copies), Jeong Jeong (copy the next Lesson), Firebender Ascension (copy a triggered ability), Storm of Memories (storm copies).
-- **Casting from other zones:** Hakoda (cast Allies from the top of the library), Fire Lord Ozai (play the opponent's exiled card), Descendants' Path, Yue (cast free from hand), Lost in Memories (grants flashback), and airbend.
-- **Replacement effects:** Solid Ground (one more +1/+1 counter), Combustion Technique (exile instead of dying), stun counters.
-- **Honest Work:** loses all abilities and becomes a 1/1 Citizen with a new name, which touches several layers at once.
-- **Fire Lord Ozai:** mana that lasts until end of combat.
-- **Hidden information on a shared device:** Dai Li Indoctrination (look at the opponent's hand and choose from it), Scarring Memories and Ozai's Cruelty (the opponent chooses).
+- **Koh, the Face Stealer** (L): has every activated and triggered ability of the last chosen card exiled with it.
+- **Honest Work** (L): loses all abilities and becomes a 1/1 Citizen named Humble Merchant with a mana ability, which touches layers 3, 4, 6 and 7 at once. On a creature whose ability grants others theirs (Aang, Air Nomad; Smellerbee), the removal must apply first: a real 613.8 dependency.
+- **Copies on the stack:** Firebender Ascension (copy a triggered ability), Jeong Jeong (copy the next Lesson), Storm of Memories (storm, and a free cast from the graveyard).
+- **Bolt Bend:** changes the target of a spell or ability.
+- **Casting from elsewhere:** Hakoda (look at and cast from the top of the library), Hama (cast the opponent's exiled card by waterbending), Fire Lord Ozai (play the opponent's exiled card; combat-long mana).
+- **Princess Yue:** returns as a land named Moon, if she was a nonland creature.
+- **Animal Attendant:** mana that remembers what it was spent on.
+
+The small ones include the token copies (Joo Dee, Ran and Shaw), free casts (Descendants' Path, Yue, the Moon Spirit; Zuko, Exiled Prince), choices that belong to the other player (Combustion Man, Wan Shi Tong, Destined Confrontation), the private reveal of Dai Li Indoctrination, and Solid Ground's replacement.
 
 ## Auto-tallied numbers
 
