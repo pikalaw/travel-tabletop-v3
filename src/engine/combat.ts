@@ -23,6 +23,10 @@ export function canBlock(s: GameState, blocker: GameObject, attacker: GameObject
   if (attacker.attacking === undefined) return false;
   if (hasKeyword(s, attacker, 'flying') && !hasKeyword(s, blocker, 'flying') && !hasKeyword(s, blocker, 'reach')) return false;
   if (hasKeyword(s, attacker, "can't be blocked")) return false;
+  // The Spirit tokens: "can't block or be blocked by non-Spirit creatures".
+  const SPIRIT_ONLY = "can't block or be blocked by non-spirit creatures";
+  const spirit = (o: GameObject) => characteristics(s, o).subtypes.includes('Spirit');
+  if ((hasKeyword(s, attacker, SPIRIT_ONLY) && !spirit(blocker)) || (hasKeyword(s, blocker, SPIRIT_ONLY) && !spirit(attacker))) return false;
   return true;
 }
 
@@ -44,6 +48,7 @@ export function declareAttackers(s: GameState, attackers: ObjectId[]): void {
   }
   const who = s.setup.players[s.active].name;
   event(s, attackers.length ? `${who} attacks with ${attackers.map((id) => name(s, obj(s, id))).join(', ')}` : `${who} doesn't attack`);
+  if (attackers.length) s.turnLog.attacked[s.active] = true;
   for (const id of attackers) fire(s, { kind: 'attacks', object: id }); // 508.3a
 }
 
@@ -60,6 +65,7 @@ export function checkBlocks(s: GameState, blocks: { blocker: ObjectId; attacker:
   for (const a of attackers(s)) {
     const n = blocks.filter((b) => b.attacker === a.id).length;
     if (n === 1 && hasKeyword(s, a, 'menace')) return `${name(s, a)} has menace: it can't be blocked by just one creature`;
+    if (n > 1 && hasKeyword(s, a, "can't be blocked by more than one creature")) return `${name(s, a)} can't be blocked by more than one creature`;
   }
   return null;
 }

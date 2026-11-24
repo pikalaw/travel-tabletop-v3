@@ -55,6 +55,7 @@ export function leaveBattlefield(s: GameState, ids: ObjectId[], to: 'graveyard' 
     const exileInstead = dies && s.effects.some((e) => e.effect.exileIfWouldDie && e.affected.includes(id));
     dest.set(id, exileInstead ? 'exile' : to);
     fire(s, { kind: exileInstead || !dies ? 'leaves' : 'dies', object: id });
+    if (!exileInstead && to === 'graveyard') fire(s, { kind: 'toGraveyard', object: id });
   }
   const out: ObjectId[] = [];
   for (const id of live) {

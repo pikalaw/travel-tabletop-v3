@@ -50,7 +50,8 @@ export type ObjectRef =
   | { target: number }               // the n-th target spec's chosen objects
   | { all: Filter }
   | 'triggerObject'                  // the object the trigger's event is about
-  | 'attachedTo';                    // what this Aura or Equipment is attached to
+  | 'attachedTo'                     // what this Aura or Equipment is attached to
+  | 'created';                       // the token this effect list created last ("put a counter on it")
 
 // ----- Numbers ---------------------------------------------------------------------------------
 
@@ -69,6 +70,10 @@ export type Amount =
 export type Condition =
   | { atLeast: Amount; n: number }
   | { xAtLeast: number }
+  /** The object chosen for a target spec matches a filter ("if it has power 4 or greater"). */
+  | { target: number; is: Filter }
+  /** What happened this turn (raid, "if an opponent lost life this turn"). */
+  | { thisTurn: 'youAttacked' | 'opponentLostLife' }
   | { not: Condition }
   | { all: Condition[] }
   | 'yourTurn'
@@ -116,6 +121,12 @@ export type Effect =
   | { search: Filter; n?: number; to: 'hand' | 'battlefield'; tapped?: boolean }
   /** "You may play an additional land this turn." */
   | { extraLand: number }
+  /** "You may sacrifice a creature or artifact. If you do, …" / "You may discard a card. If you do, …" */
+  | { optional: { sacrifice?: Filter; discard?: number }; then: Effect[] }
+  /** Each deals damage equal to its power to the other (701.14). */
+  | { fight: [ObjectRef, ObjectRef] }
+  /** "Counter target spell unless its controller pays {2}." */
+  | { counterUnlessPays: string; on: ObjectRef }
   | { counterSpell: ObjectRef }
   | { may: Effect[] }
   | { if: Condition; then: Effect[]; else?: Effect[] };
@@ -149,6 +160,10 @@ export interface SpellAbility {
   modes?: { min: number; max: number; options: Mode[] };
   /** An additional cost to cast it (601.2f), such as "waterbend {5}". */
   additionalCost?: Cost;
+  /** "This spell costs {1} less to cast for each …" (601.2f): generic reduced, never below zero. */
+  reduceBy?: Amount;
+  /** "You may cast this spell as though it had flash if …" */
+  flashIf?: Condition;
 }
 
 export interface ActivatedAbility {
@@ -175,7 +190,11 @@ export type TriggerEvent =
   | { cast: Filter; by: 'you' | 'opponent' | 'any' }
   | { step: Step; whose: 'yours' | 'any' }
   | { becomesTapped: Filter }
-  | { dealsCombatDamageToPlayer: Filter };
+  | { dealsCombatDamageToPlayer: Filter }
+  /** "Whenever you draw your second card each turn". */
+  | { drawsNth: number }
+  /** A permanent put into a graveyard from the battlefield, creature or not. */
+  | { toGraveyard: Filter };
 
 export interface TriggeredAbility {
   when: TriggerEvent;
@@ -221,6 +240,7 @@ export interface StaticAbility { effect: Continuous; while?: Condition; text: st
 export type Replacement =
   | { entersTapped: true }                                   // this permanent
   | { entersChoosingColor: { except?: Color } }             // "As it enters, choose a color other than red"
+  | { untapsEachUntapStep: true }                            // Bender's Waterskin: untaps in other players' untap steps too
   | { entersWithCounters: string; n: number }               // this permanent
   | { moreCounters: string; extra: number; on: Filter };    // Solid Ground
 

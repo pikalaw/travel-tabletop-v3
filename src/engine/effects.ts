@@ -5,7 +5,7 @@
  */
 import type { Effect, ObjectRef, PlayerRef } from './abilities';
 import { characteristics, view } from './characteristics';
-import { amount, holds, matches, objects, type Context } from './evaluate';
+import { amount, holds, matches, objects, select, type Context } from './evaluate';
 import { draw, event, move, obj, shuffleLibrary, top, zoneOf } from './state';
 import type { Choice, GameState, PlayerId, Target } from './types';
 import { other, PLAYERS } from './types';
@@ -16,7 +16,7 @@ const name = (s: GameState, p: PlayerId) => s.setup.players[p].name;
 
 function ctxOf(s: GameState): Context {
   const r = s.resolving!;
-  return { controller: r.controller, source: r.source, targets: r.targets, ...(r.eventObject ? { eventObject: r.eventObject } : {}), ...(r.x !== undefined ? { x: r.x } : {}) };
+  return { controller: r.controller, source: r.source, targets: r.targets, ...(r.eventObject ? { eventObject: r.eventObject } : {}), ...(r.x !== undefined ? { x: r.x } : {}), ...(r.created ? { created: r.created } : {}) };
 }
 
 function players(s: GameState, ref: PlayerRef, ctx: Context): PlayerId[] {
@@ -47,6 +47,7 @@ export function dealDamage(s: GameState, sourceId: string, to: Target, n: number
   const srcName = src ? characteristics(s, src).name : 'A source';
   if (isPlayer(to)) {
     s.players[to].life -= n;
+    s.turnLog.lifeLost[to] += n;
     event(s, `${srcName} deals ${n} damage to ${name(s, to)}`);
   } else {
     const o = s.objects[to];
@@ -100,7 +101,7 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
   } else if ('gainLife' in e) {
     for (const p of players(s, e.gainLife, ctx)) { const k = n(e.n); s.players[p].life += k; event(s, `${name(s, p)} gains ${k} life`); }
   } else if ('loseLife' in e) {
-    for (const p of players(s, e.loseLife, ctx)) { const k = n(e.n); s.players[p].life -= k; event(s, `${name(s, p)} loses ${k} life`); }
+    for (const p of players(s, e.loseLife, ctx)) { const k = n(e.n); s.players[p].life -= k; s.turnLog.lifeLost[p] += k; event(s, `${name(s, p)} loses ${k} life`); }
   } else if ('addCounters' in e) {
     for (const o of objs(s, e.on, ctx)) addCounters(s, o.id, e.addCounters, n(e.n));
   } else if ('removeCounters' in e) {
@@ -148,6 +149,7 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
     const k = n(e.n);
     for (let i = 0; i < k; i++) {
       const id = createToken(s, e.createToken, p, { tapped: !!e.tapped || !!e.attacking });
+      if (s.resolving) s.resolving.created = id;
       // 506.3d: a token put onto the battlefield attacking attacks the player it is told to, and was never declared.
       if (e.attacking && s.objects[id]) s.objects[id]!.attacking = other(p);
     }
@@ -201,6 +203,37 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
       if (e.to === 'hand') move(s, id, zoneOf(p, 'hand')); else putOntoBattlefield(s, id, p, { tapped: !!e.tapped });
     }
     shuffleLibrary(s, p);
+  } else if ('optional' in e) {
+    const p = ctx.controller;
+    const pay = e.optional.sacrifice ? 'sacrifice' : 'discard';
+    const options = e.optional.sacrifice
+      ? select(s, v, { ...e.optional.sacrifice, controller: 'you' }, ctx).map((o) => o.id)
+      : [...s.zones[zoneOf(p, 'hand')]];
+    const count = e.optional.discard ?? 1;
+    if (options.length < count) return 'next'; // can't pay, so can't do it
+    if (!choice) { s.decision = { kind: 'optionalCost', player: p, pay, options, count }; return 'wait'; }
+    if (choice.kind !== 'optionalCost') throw new Error('expected an optional cost');
+    if (!choice.objects.length) return 'next';
+    if (pay === 'sacrifice') leaveBattlefield(s, choice.objects, 'graveyard');
+    else for (const id of choice.objects) { event(s, `${name(s, p)} discards ${characteristics(s, obj(s, id)).name}`); move(s, id, zoneOf(p, 'graveyard')); }
+    splice(s, e.then);
+  } else if ('fight' in e) {
+    const [a] = objs(s, e.fight[0], ctx), [b] = objs(s, e.fight[1], ctx);
+    // 701.14b: if either is no longer a creature on the battlefield, no damage is dealt.
+    if (a && b && v(a).types.includes('Creature') && v(b).types.includes('Creature')) {
+      const pa = v(a).power, pb = v(b).power;
+      dealDamage(s, a.id, b.id, pa);
+      dealDamage(s, b.id, a.id, pb);
+    }
+  } else if ('counterUnlessPays' in e) {
+    for (const t of recipients(s, e.on, ctx)) {
+      const o = !isPlayer(t) ? s.objects[t] : undefined;
+      if (!o || o.zone !== 'stack') continue;
+      if (!choice) { s.decision = { kind: 'payOrCounter', player: o.controller, cost: e.counterUnlessPays }; return 'wait'; }
+      if (choice.kind === 'yes') { event(s, `${name(s, o.controller)} pays ${e.counterUnlessPays}`); continue; }
+      event(s, `${characteristics(s, o).name} is countered`);
+      move(s, o.id, zoneOf(o.owner, 'graveyard'));
+    }
   } else if ('extraLand' in e) {
     s.players[ctx.controller].extraLands += e.extraLand;
   } else if ('mill' in e) {

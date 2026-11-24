@@ -3,6 +3,7 @@
  * these functions mutate it; nothing outside the engine ever sees a state mid-step.
  */
 import { nextInt, shuffle as shuffleWith } from './rng';
+import { fire } from './triggers';
 import type { CardId, GameObject, GameState, ObjectId, PlayerId, Printed, ZoneId } from './types';
 
 export const zoneOf = (p: PlayerId, z: 'library' | 'hand' | 'graveyard' | 'exile'): ZoneId => `${p}.${z}`;
@@ -63,6 +64,7 @@ export function draw(s: GameState, p: PlayerId, n = 1): void {
     const id = top(s, p);
     if (id === undefined) { s.players[p].drewFromEmpty = true; continue; }
     move(s, id, zoneOf(p, 'hand'));
+    if (s.turn > 0) { s.turnLog.drawn[p]++; fire(s, { kind: 'drew', player: p, nth: s.turnLog.drawn[p] }); }
   }
 }
 

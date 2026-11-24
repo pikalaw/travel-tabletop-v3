@@ -146,6 +146,8 @@ export interface Resolving {
   specs: TargetSpec[];
   eventObject?: ObjectId;
   x?: number;
+  /** The token created last while resolving, for "it". */
+  created?: ObjectId;
 }
 
 export interface PlayerState {
@@ -178,7 +180,10 @@ export type Decision =
   | { kind: 'discardEffect'; player: PlayerId; count: number }
   | { kind: 'chooseColor'; player: PlayerId; object: ObjectId; options: Color[] }
   | { kind: 'arrange'; player: PlayerId; cards: ObjectId[]; to: 'bottom' | 'graveyard' }
-  | { kind: 'search'; player: PlayerId; options: ObjectId[]; max: number };
+  | { kind: 'search'; player: PlayerId; options: ObjectId[]; max: number }
+  /** "You may sacrifice / discard …": pick what to pay with, or nothing to decline. */
+  | { kind: 'optionalCost'; player: PlayerId; pay: 'sacrifice' | 'discard'; options: ObjectId[]; count: number }
+  | { kind: 'payOrCounter'; player: PlayerId; cost: string };
 
 export type Choice =
   | { kind: 'keep' }
@@ -194,6 +199,7 @@ export type Choice =
   /** Scry or surveil: the cards kept on top, top first, and the ones moved away. */
   | { kind: 'arrange'; top: ObjectId[]; away: ObjectId[] }
   | { kind: 'search'; cards: ObjectId[] }
+  | { kind: 'optionalCost'; objects: ObjectId[] }
   | { kind: 'yes' }
   | { kind: 'no' }
   | { kind: 'attack'; attackers: ObjectId[] }
@@ -246,6 +252,8 @@ export interface GameState {
   activatedThisTurn: Record<string, number>;
   /** Exhaust abilities used, by "objectId:index" (702.177: each only once). */
   exhausted: Record<string, true>;
+  /** What happened this turn, for "this turn" conditions and "second card" triggers. */
+  turnLog: { attacked: Record<PlayerId, boolean>; lifeLost: Record<PlayerId, number>; drawn: Record<PlayerId, number> };
   result: GameResult | null;
   /** Public events, oldest first. */
   events: GameEvent[];

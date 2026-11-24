@@ -30,6 +30,7 @@ export interface Context {
   eventObject?: ObjectId;
   /** The value chosen for X. */
   x?: number;
+  created?: ObjectId;
 }
 
 const zoneName = (o: GameObject) => (o.zone.includes('.') ? o.zone.split('.')[1]! : o.zone);
@@ -77,6 +78,7 @@ export function select(s: GameState, view: View, f: Filter, ctx: Context): GameO
 export function objects(s: GameState, view: View, ref: ObjectRef, ctx: Context): GameObject[] {
   if (ref === 'self') return s.objects[ctx.source] ? [s.objects[ctx.source]!] : [];
   if (ref === 'triggerObject') return ctx.eventObject && s.objects[ctx.eventObject] ? [s.objects[ctx.eventObject]!] : [];
+  if (ref === 'created') return ctx.created && s.objects[ctx.created] ? [s.objects[ctx.created]!] : [];
   if (ref === 'attachedTo') {
     const to = s.objects[ctx.source]?.attachedTo;
     return to && s.objects[to] ? [s.objects[to]!] : [];
@@ -102,5 +104,14 @@ export function holds(s: GameState, view: View, c: Condition, ctx: Context): boo
   if ('all' in c) return c.all.every((x) => holds(s, view, x, ctx));
   if ('exists' in c) return select(s, view, c.exists, ctx).length > 0;
   if ('xAtLeast' in c) return (ctx.x ?? 0) >= c.xAtLeast;
+  if ('thisTurn' in c) {
+    if (c.thisTurn === 'youAttacked') return s.turnLog.attacked[ctx.controller];
+    return Object.entries(s.turnLog.lifeLost).some(([p, n]) => p !== ctx.controller && n > 0);
+  }
+  if ('target' in c) {
+    const t = ctx.targets?.[c.target]?.[0];
+    const o = t ? s.objects[t] : undefined;
+    return !!o && matches(s, view, o, { ...c.is, zone: c.is.zone ?? 'battlefield' }, ctx);
+  }
   return amount(s, view, c.atLeast, ctx) >= c.n;
 }

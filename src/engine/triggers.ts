@@ -17,7 +17,9 @@ export type GameEventKind =
   | { kind: 'cast'; object: ObjectId; player: PlayerId }
   | { kind: 'step'; step: Step }
   | { kind: 'becomesTapped'; object: ObjectId }
-  | { kind: 'dealsCombatDamageToPlayer'; object: ObjectId };
+  | { kind: 'dealsCombatDamageToPlayer'; object: ObjectId }
+  | { kind: 'drew'; player: PlayerId; nth: number }
+  | { kind: 'toGraveyard'; object: ObjectId };
 
 /** The keyword library's triggered keywords (702): written once, used by every card that has them. */
 const KEYWORD_TRIGGERS: Record<string, TriggeredAbility> = {
@@ -73,6 +75,8 @@ function eventMatches(s: GameState, v: View, w: TriggerEvent, self: boolean | un
     if (w.by === 'opponent' && ev.player === ctx.controller) return false;
     return filterOn(w.cast);
   }
+  if ('drawsNth' in w) return ev.kind === 'drew' && ev.player === ctx.controller && ev.nth === w.drawsNth;
+  if ('toGraveyard' in w) return ev.kind === 'toGraveyard' && filterOn(w.toGraveyard);
   if ('step' in w) return ev.kind === 'step' && ev.step === w.step && (w.whose === 'any' || s.active === ctx.controller);
   return false;
 }
