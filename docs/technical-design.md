@@ -60,7 +60,7 @@ The engine is three pure functions. It never waits and never touches the screen.
 
 ```ts
 start(setup: GameSetup, seed: number): GameState          // shuffles, deals, runs to the first decision (a mulligan)
-options(state: GameState): Options                        // what the waiting player may answer, with reasons for what they may not
+legalActions(state: GameState): Choice[]                  // what the waiting player may answer; whyNotCast and the like give the reasons
 answer(state: GameState, choice: Choice): GameState | Refusal  // checks the choice, applies it, runs to the next decision
 ```
 
@@ -221,7 +221,7 @@ Rules bugs are the main risk, so most tests sit below the UI, and each layer has
 
 ![Build order: M0 to M5, each with its gate](images/milestones.png)
 
-M1 and M2 (highlighted) are the generic core: they need no Avatar card, only the Comprehensive Rules. M0 can run alongside M1, but it should finish before M2's effect vocabulary is fixed, so the vocabulary is built for the cards that exist. M0 is done: the card data is built, and [docs/card-scan.md](./card-scan.md) tags every card with the features it needs and sizes the 38 hard cards (2 large, 9 medium, 27 small), which sizes M4 and M5.
+M1 and M2 (highlighted) are the generic core: they need no Avatar card, only the Comprehensive Rules. M0 can run alongside M1, but it should finish before M2's effect vocabulary is fixed, so the vocabulary is built for the cards that exist. M0 is done: the card data is built, and [docs/card-scan.md](./card-scan.md) tags every card with the features it needs and sizes the 38 hard cards (2 large, 9 medium, 27 small), which sizes M4 and M5. M1's gate passes: a vanilla game plays to a win and its log replays to the same state, and random legal games keep every invariant. Two simplifications stand until M3: the solver prefers sources by a fixed order (floating mana, then sources that make fewer colours) rather than by a min-cost flow, and the controller keeps every state in memory rather than one snapshot per turn on disk.
 
 ## Adding cards later
 
