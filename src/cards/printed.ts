@@ -1,5 +1,5 @@
 import { parseCost } from '../engine/mana';
-import type { Printed } from '../engine/types';
+import type { Color, Printed } from '../engine/types';
 import type { CardPrinting } from './types';
 
 const SUPERTYPES = ['Legendary', 'Basic', 'Snow', 'World'];
@@ -20,6 +20,7 @@ export function printedOf(c: CardPrinting): Printed {
     ...(power !== undefined ? { power } : {}),
     ...(toughness !== undefined ? { toughness } : {}),
     keywords: c.keywords,
+    colors: c.colors as Color[],
     text: c.oracleText,
   };
 }

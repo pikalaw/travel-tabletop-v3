@@ -10,7 +10,10 @@
  */
 import type { Continuous } from './abilities';
 import { amount, holds, objects, type Characteristics, type Context, type View } from './evaluate';
-import type { GameObject, GameState, ObjectId } from './types';
+import type { Color, GameObject, GameState, ManaSymbol, ObjectId } from './types';
+
+/** 202.2: a card's colours are those of the mana symbols in its cost. */
+const colorsOfCost = (cost: ManaSymbol[]): Color[] => [...new Set(cost.flatMap((m) => (m.kind === 'color' ? [m.color] : m.kind === 'hybrid' ? m.colors : [])))];
 
 export type { Characteristics } from './evaluate';
 
@@ -22,7 +25,7 @@ function printedChars(s: GameState, o: GameObject): Characteristics {
   return {
     name: p.name, supertypes: [...p.supertypes], types: [...p.types], subtypes: [...p.subtypes],
     power: p.power ?? 0, toughness: p.toughness ?? 0, keywords: p.keywords.map((k) => k.toLowerCase()),
-    abilitiesRemoved: false,
+    colors: p.colors ?? colorsOfCost(p.manaCost), abilitiesRemoved: false,
   };
 }
 

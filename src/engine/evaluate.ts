@@ -5,7 +5,7 @@
  */
 import type { Amount, Condition, Filter, ObjectRef } from './abilities';
 import { manaValue } from './mana';
-import type { GameObject, GameState, ObjectId, PlayerId, Target } from './types';
+import type { Color, GameObject, GameState, ObjectId, PlayerId, Target } from './types';
 
 export interface Characteristics {
   name: string;
@@ -15,6 +15,7 @@ export interface Characteristics {
   power: number;
   toughness: number;
   keywords: string[];
+  colors: Color[];
   /** Lost all abilities (layer 6): its static, triggered and activated abilities don't work. */
   abilitiesRemoved: boolean;
 }
@@ -47,7 +48,12 @@ export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx:
   if (f.attacking !== undefined && (o.attacking !== undefined) !== f.attacking) return false;
   if (f.blocking !== undefined && (o.blocking !== undefined) !== f.blocking) return false;
   if (f.keyword && !c.keywords.includes(f.keyword)) return false;
+  if (f.notKeyword && c.keywords.includes(f.notKeyword)) return false;
+  if (f.colors && !f.colors.some((x) => c.colors.includes(x))) return false;
   if (f.withCounter && !(o.counters[f.withCounter]! > 0)) return false;
+  if (f.noCounters && Object.values(o.counters).some((n) => n > 0)) return false;
+  if (f.anyOf && !f.anyOf.some((g) => matches(s, view, o, { ...g, zone: f.zone ?? 'battlefield' }, ctx))) return false;
+  if (f.controlledByTarget !== undefined && !(ctx.targets?.[f.controlledByTarget] ?? []).includes(o.controller)) return false;
   if (f.power && !cmp(c.power, f.power)) return false;
   if (f.toughness && !cmp(c.toughness, f.toughness)) return false;
   if (f.manaValue && !cmp(manaValue(s.setup.cards[o.card]!.manaCost), f.manaValue)) return false;
@@ -80,6 +86,7 @@ export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = 0)
   if ('count' in a) return select(s, view, a.count, ctx).length;
   if ('counters' in a) return objects(s, view, a.on, ctx).reduce((n, o) => n + (o.counters[a.counters] ?? 0), 0);
   if ('powerOf' in a) return objects(s, view, a.powerOf, ctx).reduce((n, o) => n + view(o).power, 0);
+  if ('manaValueOf' in a) return objects(s, view, a.manaValueOf, ctx).reduce((n, o) => n + manaValue(s.setup.cards[o.card]!.manaCost), 0);
   if ('times' in a) return amount(s, view, a.times, ctx, x) * a.by;
   return amount(s, view, a.plus, ctx, x) + a.and;
 }

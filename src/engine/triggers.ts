@@ -75,6 +75,7 @@ export function fire(s: GameState, ev: GameEventKind): void {
     for (const [index, t] of triggeredAbilities(s, o, v)) {
       const ctx: Context = { controller: o.controller, source: o.id, ...('object' in ev ? { eventObject: ev.object } : {}) };
       if (!eventMatches(s, v, t.when, t.self, ev, ctx)) continue;
+      if (t.onlyIf && !holds(s, v, t.onlyIf, ctx)) continue;
       if (t.if && !holds(s, v, t.if, ctx)) continue; // 603.4: the intervening "if" is checked as it triggers
       s.pendingTriggers.push({
         controller: o.controller, source: o.id, sourceName: v(o).name, card: o.card, index,

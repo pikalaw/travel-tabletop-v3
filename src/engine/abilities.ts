@@ -25,7 +25,14 @@ export interface Filter {
   attacking?: boolean;
   blocking?: boolean;
   keyword?: string;
-  withCounter?: string;      // has at least one counter of this kind
+  notKeyword?: string;
+  colors?: Color[];          // any of these colours
+  withCounter?: string;
+  noCounters?: boolean;
+  /** Any of these filters (for "attacking or blocking creature"); combined with the fields above. */
+  anyOf?: Filter[];
+  /** Controlled by the player chosen for the n-th target spec ("creatures target player controls"). */
+  controlledByTarget?: number;      // has at least one counter of this kind
   power?: Compare;
   toughness?: Compare;
   manaValue?: Compare;
@@ -49,6 +56,7 @@ export type Amount =
   | { count: Filter }
   | { counters: string; on: ObjectRef }
   | { powerOf: ObjectRef }
+  | { manaValueOf: ObjectRef }
   | 'x'
   | { times: Amount; by: number }
   | { plus: Amount; and: number };
@@ -137,6 +145,8 @@ export interface TriggeredAbility {
   when: TriggerEvent;
   /** The event must be about this object ("When ~ enters", "Whenever ~ attacks"). */
   self?: boolean;
+  /** Part of the trigger event, checked only as it triggers ("Whenever ~ and at least one other creature attack"). */
+  onlyIf?: Condition;
   /** An intervening "if" clause (603.4): checked when it triggers and again on resolution. */
   if?: Condition;
   targets?: TargetSpec[];

@@ -37,6 +37,8 @@ export interface Printed {
   power?: number;
   toughness?: number;
   keywords: string[];
+  /** Its colours; absent means derived from the mana cost (202.2). */
+  colors?: Color[];
   text: string;
   /** What the card does beyond its printed values; absent for vanilla cards and basic lands. */
   script?: CardScript;
