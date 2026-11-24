@@ -1,0 +1,13 @@
+# Travel Tabletop v3 docs
+
+- [Product requirements (PRD)](./prd.md): what v3 does: the format, the rules it enforces, the board layout, hand-offs on one shared device, undo and judge actions.
+- [Technical design](./technical-design.md): the rules engine, card scripts, the mana solver, hidden information, replay and the build order (M0–M5).
+
+These are markdown exports of the living Claude Docs, with their diagrams and mockups:
+
+- [PRD](https://claude.ai/artifact/DX8Ad5vNTpBzigYBG5AWoa) and [technical design](https://claude.ai/artifact/MaL5LLZvcH6ngGaq2nJrLw) on Claude Docs.
+- [images/](./images/): the architecture and build-order diagrams, and the board mockup.
+- [mockup/](./mockup/): the script that renders the board mockup from the real cards.
+- [card-pool-scan/](./card-pool-scan/): the scan of the v2 deck export behind the PRD's card-pool numbers.
+
+The v2 docs live in the [v2 repository](https://github.com/pikalaw/travel-tabletop/tree/main/docs).
