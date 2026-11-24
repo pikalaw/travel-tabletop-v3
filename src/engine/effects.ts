@@ -5,7 +5,8 @@
  */
 import type { Effect, ObjectRef, PlayerRef } from './abilities';
 import { characteristics, view } from './characteristics';
-import { amount, holds, matches, objects, select, type Context } from './evaluate';
+import { amount, countersOf, holds, matches, objects, select, type Context } from './evaluate';
+import { shuffle } from './rng';
 import { draw, event, move, obj, shuffleLibrary, top, zoneOf } from './state';
 import type { Choice, GameState, PlayerId, Target } from './types';
 import { other, PLAYERS } from './types';
@@ -16,7 +17,7 @@ const name = (s: GameState, p: PlayerId) => s.setup.players[p].name;
 
 function ctxOf(s: GameState): Context {
   const r = s.resolving!;
-  return { controller: r.controller, source: r.source, targets: r.targets, ...(r.eventObject ? { eventObject: r.eventObject } : {}), ...(r.x !== undefined ? { x: r.x } : {}), ...(r.created ? { created: r.created } : {}) };
+  return { controller: r.controller, source: r.source, targets: r.targets, ...(r.eventObject ? { eventObject: r.eventObject } : {}), ...(r.x !== undefined ? { x: r.x } : {}), ...(r.created ? { created: r.created } : {}), ...(r.attachedTo ? { attachedTo: r.attachedTo } : {}) };
 }
 
 function players(s: GameState, ref: PlayerRef, ctx: Context): PlayerId[] {
@@ -97,7 +98,14 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
     for (const id of cards) { event(s, `${name(s, p)} discards ${characteristics(s, obj(s, id)).name}`); move(s, id, zoneOf(p, 'graveyard')); }
   } else if ('damage' in e) {
     const from = e.from ? objs(s, e.from, ctx)[0]?.id ?? ctx.source : ctx.source;
-    for (const t of recipients(s, e.to, ctx)) dealDamage(s, from, t, n(e.damage));
+    for (const t of recipients(s, e.to, ctx)) {
+      const k = n(e.damage);
+      // 120.4a: excess damage is damage beyond what's lethal (one, from a deathtouch source).
+      const o = !isPlayer(t) ? s.objects[t] : undefined;
+      const lethal = o ? (s.objects[from] && characteristics(s, s.objects[from]!).keywords.includes('deathtouch') ? (v(o).toughness - o.damage > 0 ? 1 : 0) : Math.max(0, v(o).toughness - o.damage)) : 0;
+      dealDamage(s, from, t, k);
+      if (e.gainExcess && o && k > lethal) { s.players[ctx.controller].life += k - lethal; event(s, `${name(s, ctx.controller)} gains ${k - lethal} life`); }
+    }
   } else if ('gainLife' in e) {
     for (const p of players(s, e.gainLife, ctx)) { const k = n(e.n); s.players[p].life += k; event(s, `${name(s, p)} gains ${k} life`); }
   } else if ('loseLife' in e) {
@@ -189,9 +197,12 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
     if (!choice) { s.decision = { kind: 'arrange', player: p, cards: top, to: 'scry' in e ? 'bottom' : 'graveyard' }; return 'wait'; }
     if (choice.kind !== 'arrange') throw new Error('expected an arrangement');
     const away = choice.away;
-    s.zones[zoneOf(p, 'library')] = [...lib.slice(0, lib.length - k).filter((id) => !away.includes(id)), ...[...choice.top].reverse()];
-    if ('scry' in e) s.zones[zoneOf(p, 'library')].unshift(...[...away].reverse());
-    else for (const id of away) move(s, id, zoneOf(p, 'graveyard'));
+    const rest = lib.slice(0, lib.length - k);
+    if ('scry' in e) s.zones[zoneOf(p, 'library')] = [...[...away].reverse(), ...rest, ...[...choice.top].reverse()];
+    else {
+      for (const id of away) move(s, id, zoneOf(p, 'graveyard')); // from the library as it is
+      s.zones[zoneOf(p, 'library')] = [...rest, ...[...choice.top].reverse()];
+    }
     event(s, `${name(s, p)} ${'scry' in e ? 'scries' : 'surveils'} ${k}: ${choice.top.length} on top, ${away.length} ${'scry' in e ? 'on the bottom' : 'into the graveyard'}`);
   } else if ('search' in e) {
     const p = ctx.controller;
@@ -229,13 +240,76 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
     for (const t of recipients(s, e.on, ctx)) {
       const o = !isPlayer(t) ? s.objects[t] : undefined;
       if (!o || o.zone !== 'stack') continue;
-      if (!choice) { s.decision = { kind: 'payOrCounter', player: o.controller, cost: e.counterUnlessPays }; return 'wait'; }
+      if (!choice) { s.decision = { kind: 'payOrElse', player: o.controller, cost: e.counterUnlessPays, otherwise: `${characteristics(s, o).name} is countered` }; return 'wait'; }
       if (choice.kind === 'yes') { event(s, `${name(s, o.controller)} pays ${e.counterUnlessPays}`); continue; }
       event(s, `${characteristics(s, o).name} is countered`);
       move(s, o.id, zoneOf(o.owner, 'graveyard'));
     }
   } else if ('extraLand' in e) {
     s.players[ctx.controller].extraLands += e.extraLand;
+  } else if ('attach' in e) {
+    const [to] = objs(s, e.attach, ctx);
+    const self = s.objects[ctx.source];
+    if (to && self && self.zone === 'battlefield' && to.zone === 'battlefield') { self.attachedTo = to.id; event(s, `${v(self).name} is attached to ${v(to).name}`); }
+  } else if ('shuffleIntoLibrary' in e) {
+    for (const o of objs(s, e.shuffleIntoLibrary, ctx)) {
+      const owner = o.owner;
+      leaveBattlefield(s, [o.id], 'library');
+      shuffleLibrary(s, owner);
+    }
+  } else if ('putCountersOf' in e) {
+    const all = countersOf(s, v, e.putCountersOf, ctx);
+    for (const o of objs(s, e.on, ctx)) for (const c of all) for (const [kind, k] of Object.entries(c)) addCounters(s, o.id, kind, k);
+  } else if ('lookAtTop' in e) {
+    const p = ctx.controller;
+    const lib = s.zones[zoneOf(p, 'library')];
+    if (!choice) {
+      const k = Math.min(n(e.lookAtTop), lib.length);
+      let seen = lib.slice(lib.length - k).reverse(); // top first
+      const r = s.resolving!;
+      if (e.rest === 'mill') { seen = seen.map((id) => move(s, id, zoneOf(p, 'graveyard')).id); event(s, `${name(s, p)} mills ${k}`); }
+      r.looked = seen;
+      const options = seen.filter((id) => matches(s, v, s.objects[id]!, { ...e.mayTake, zone: e.rest === 'mill' ? 'graveyard' : 'library' }, ctx));
+      s.decision = { kind: 'pick', player: p, from: seen, options, min: 0, max: 1, text: e.rest === 'mill' ? 'You may put one into your hand' : 'You may reveal one and put it into your hand' };
+      return 'wait';
+    }
+    if (choice.kind !== 'pick') throw new Error('expected a pick');
+    const r = s.resolving!;
+    const seen = r.looked ?? [];
+    delete r.looked;
+    for (const id of choice.cards) { event(s, `${name(s, p)} ${e.rest === 'mill' ? 'takes' : 'reveals'} ${characteristics(s, obj(s, id)).name} and puts it into their hand`); move(s, id, zoneOf(p, 'hand')); }
+    if (e.rest === 'bottomRandom') {
+      const [rest, rng] = shuffle(s.rng, seen.filter((id) => !choice.cards.includes(id)));
+      s.rng = rng;
+      const keep = s.zones[zoneOf(p, 'library')].filter((id) => !rest.includes(id));
+      s.zones[zoneOf(p, 'library')] = [...rest, ...keep]; // the bottom is the first element
+    }
+    if (!choice.cards.length && e.otherwise) splice(s, e.otherwise);
+  } else if ('revealAndDiscard' in e) {
+    for (const q of players(s, e.revealAndDiscard, ctx)) {
+      const shown = [...s.zones[zoneOf(q, 'hand')]];
+      const options = shown.filter((id) => matches(s, v, s.objects[id]!, { ...e.choose, zone: 'hand' }, ctx));
+      if (!choice) {
+        event(s, `${name(s, q)} reveals their hand`);
+        if (!options.length) continue;
+        s.decision = { kind: 'pick', player: ctx.controller, from: shown, options, min: 1, max: 1, text: `Choose a card for ${name(s, q)} to discard` };
+        return 'wait';
+      }
+      if (choice.kind !== 'pick') throw new Error('expected a pick');
+      for (const id of choice.cards) { event(s, `${name(s, q)} discards ${characteristics(s, obj(s, id)).name}`); move(s, id, zoneOf(q, 'graveyard')); }
+    }
+  } else if ('exileTopPlayable' in e) {
+    const p = ctx.controller;
+    const id = top(s, p);
+    if (id) {
+      const o = move(s, id, zoneOf(p, 'exile'));
+      o.playableTurn = s.turn;
+      event(s, `${name(s, p)} exiles ${characteristics(s, o).name} from the top of their library; they may play it this turn`);
+    }
+  } else if ('unlessPays' in e) {
+    const cost = e.unlessPays.mana ?? '';
+    if (!choice) { s.decision = { kind: 'payOrElse', player: ctx.controller, cost, ...(e.unlessPays.waterbend ? { waterbend: e.unlessPays.waterbend } : {}), otherwise: describe(e.then) }; return 'wait'; }
+    if (choice.kind === 'no') splice(s, e.then);
   } else if ('mill' in e) {
     for (const p of players(s, e.mill, ctx)) for (let i = n(e.n); i > 0; i--) { const id = top(s, p); if (id) move(s, id, zoneOf(p, 'graveyard')); }
   } else if ('counterSpell' in e) {

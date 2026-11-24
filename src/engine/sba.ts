@@ -28,6 +28,10 @@ export function stateBasedActions(s: GameState): boolean {
   for (const o of dying) event(s, `${characteristics(s, o).name} dies`);
   if (dying.length) { leaveBattlefield(s, dying.map((o) => o.id), 'graveyard', { dies: true }); acted = true; }
 
+  // 704.5m: an Aura attached to nothing (or to something gone) is put into its owner's graveyard.
+  const loose = battlefield(s).filter((o) => characteristics(s, o).subtypes.includes('Aura') && (!o.attachedTo || s.objects[o.attachedTo]?.zone !== 'battlefield'));
+  if (loose.length) { leaveBattlefield(s, loose.map((o) => o.id), 'graveyard'); acted = true; }
+
   // 704.5j: the legend rule. Its choice is a decision for the controller.
   for (const p of PLAYERS) {
     const byName = new Map<string, string[]>();

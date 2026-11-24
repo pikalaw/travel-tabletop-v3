@@ -90,6 +90,8 @@ export interface GameObject {
   attachedTo?: ObjectId;
   /** Exiled by airbending: its owner may cast it from exile for {2}. */
   airbended?: boolean;
+  /** "You may play that card this turn": the turn it may be played from exile by its owner. */
+  playableTurn?: number;
   /** The colour chosen as it entered (Thriving lands). */
   chosenColor?: Color;
   /** For a spell on the stack: the modes chosen and the value of X. */
@@ -109,6 +111,8 @@ export interface StackAbility {
   index: number;
   /** The object the trigger's event was about, if any. */
   eventObject?: ObjectId;
+  /** What the source was attached to as the ability was activated (a sacrificed Aura's "enchanted creature"). */
+  attachedTo?: ObjectId;
 }
 
 /** A continuous effect from a resolved spell or ability (611.2): its affected set is fixed when it begins. */
@@ -148,6 +152,9 @@ export interface Resolving {
   x?: number;
   /** The token created last while resolving, for "it". */
   created?: ObjectId;
+  attachedTo?: ObjectId;
+  /** Cards an effect looked at, kept across its decision. */
+  looked?: ObjectId[];
 }
 
 export interface PlayerState {
@@ -183,7 +190,10 @@ export type Decision =
   | { kind: 'search'; player: PlayerId; options: ObjectId[]; max: number }
   /** "You may sacrifice / discard …": pick what to pay with, or nothing to decline. */
   | { kind: 'optionalCost'; player: PlayerId; pay: 'sacrifice' | 'discard'; options: ObjectId[]; count: number }
-  | { kind: 'payOrCounter'; player: PlayerId; cost: string };
+  /** "… unless … pays": yes pays the cost; no lets `otherwise` happen. */
+  | { kind: 'payOrElse'; player: PlayerId; cost: string; waterbend?: number; otherwise: string }
+  /** Choose among cards shown (`from`, all visible to the chooser): between `min` and `max` of `options`. */
+  | { kind: 'pick'; player: PlayerId; from: ObjectId[]; options: ObjectId[]; min: number; max: number; text: string };
 
 export type Choice =
   | { kind: 'keep' }
@@ -192,13 +202,15 @@ export type Choice =
   | { kind: 'pass' }
   | { kind: 'play'; object: ObjectId }
   | { kind: 'cast'; object: ObjectId; targets?: Target[][]; modes?: number[]; x?: number }
-  | { kind: 'activate'; object: ObjectId; ability: number; targets?: Target[][] }
+  /** `tapping`: the creatures tapped for a "tap an untapped creature you control" cost. */
+  | { kind: 'activate'; object: ObjectId; ability: number; targets?: Target[][]; tapping?: ObjectId[] }
   | { kind: 'order'; triggers: number[] }
   | { kind: 'targets'; targets: Target[][] }
   | { kind: 'color'; color: Color }
   /** Scry or surveil: the cards kept on top, top first, and the ones moved away. */
   | { kind: 'arrange'; top: ObjectId[]; away: ObjectId[] }
   | { kind: 'search'; cards: ObjectId[] }
+  | { kind: 'pick'; cards: ObjectId[] }
   | { kind: 'optionalCost'; objects: ObjectId[] }
   | { kind: 'yes' }
   | { kind: 'no' }
@@ -252,6 +264,8 @@ export interface GameState {
   activatedThisTurn: Record<string, number>;
   /** Exhaust abilities used, by "objectId:index" (702.177: each only once). */
   exhausted: Record<string, true>;
+  /** Counters on permanents that left the battlefield this turn, for "its counters" (608.2h). */
+  lastKnown: Record<ObjectId, { counters: Record<string, number> }>;
   /** What happened this turn, for "this turn" conditions and "second card" triggers. */
   turnLog: { attacked: Record<PlayerId, boolean>; lifeLost: Record<PlayerId, number>; drawn: Record<PlayerId, number> };
   result: GameResult | null;

@@ -84,11 +84,12 @@ export const decisionIs = (kind: string) => (s: GameState) => s.decision?.kind =
  * Puts cards straight onto the battlefield (untapped, not summoning-sick) or into a hand, for
  * tests that start from a position. Returns the new state and the objects' ids.
  */
-export function place(s: GameState, p: PlayerId, cards: CardId[], where: 'battlefield' | 'hand' = 'battlefield'): [GameState, ObjectId[]] {
+/** Puts new objects into a zone; onto a library they go on top, the last one topmost. */
+export function place(s: GameState, p: PlayerId, cards: CardId[], where: 'battlefield' | 'hand' | 'library' | 'graveyard' = 'battlefield'): [GameState, ObjectId[]] {
   const n = structuredClone(s);
   n.setup.cards = { ...CARDS, ...n.setup.cards };
   const ids = cards.map((c) => {
-    const o = createObject(n, c, p, where === 'battlefield' ? 'battlefield' : zoneOf(p, 'hand'));
+    const o = createObject(n, c, p, where === 'battlefield' ? 'battlefield' : zoneOf(p, where));
     o.controlledSince = -1;
     return o.id;
   });

@@ -31,6 +31,8 @@ export interface Context {
   /** The value chosen for X. */
   x?: number;
   created?: ObjectId;
+  /** What the source was attached to when its ability was activated (it may have been sacrificed since). */
+  attachedTo?: ObjectId;
 }
 
 const zoneName = (o: GameObject) => (o.zone.includes('.') ? o.zone.split('.')[1]! : o.zone);
@@ -50,6 +52,7 @@ export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx:
   if (f.controller === 'opponent' && o.controller === ctx.controller) return false;
   if (f.other && o.id === ctx.source) return false;
   if (f.self && o.id !== ctx.source) return false;
+  if (f.attached && o.id !== (ctx.attachedTo ?? s.objects[ctx.source]?.attachedTo)) return false;
   if (f.tapped !== undefined && o.tapped !== f.tapped) return false;
   if (f.attacking !== undefined && (o.attacking !== undefined) !== f.attacking) return false;
   if (f.blocking !== undefined && (o.blocking !== undefined) !== f.blocking) return false;
@@ -80,18 +83,25 @@ export function objects(s: GameState, view: View, ref: ObjectRef, ctx: Context):
   if (ref === 'triggerObject') return ctx.eventObject && s.objects[ctx.eventObject] ? [s.objects[ctx.eventObject]!] : [];
   if (ref === 'created') return ctx.created && s.objects[ctx.created] ? [s.objects[ctx.created]!] : [];
   if (ref === 'attachedTo') {
-    const to = s.objects[ctx.source]?.attachedTo;
+    const to = ctx.attachedTo ?? s.objects[ctx.source]?.attachedTo;
     return to && s.objects[to] ? [s.objects[to]!] : [];
   }
   if ('target' in ref) return (ctx.targets?.[ref.target] ?? []).flatMap((t) => (s.objects[t] ? [s.objects[t]!] : []));
   return select(s, view, ref.all, ctx);
 }
 
+/** The counters on what a reference names; for the source or the event's object gone from the battlefield, as it last existed. */
+export function countersOf(s: GameState, view: View, ref: ObjectRef, ctx: Context): Record<string, number>[] {
+  const gone = ref === 'self' ? ctx.source : ref === 'triggerObject' ? ctx.eventObject : undefined;
+  if (gone && !s.objects[gone] && s.lastKnown[gone]) return [s.lastKnown[gone]!.counters];
+  return objects(s, view, ref, ctx).map((o) => o.counters);
+}
+
 export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ctx.x ?? 0): number {
   if (typeof a === 'number') return a;
   if (a === 'x') return x;
   if ('count' in a) return select(s, view, a.count, ctx).length;
-  if ('counters' in a) return objects(s, view, a.on, ctx).reduce((n, o) => n + (o.counters[a.counters] ?? 0), 0);
+  if ('counters' in a) return countersOf(s, view, a.on, ctx).reduce((n, c) => n + (a.counters === '*' ? Object.values(c).reduce((x, y) => x + y, 0) : c[a.counters] ?? 0), 0);
   if ('powerOf' in a) return objects(s, view, a.powerOf, ctx).reduce((n, o) => n + view(o).power, 0);
   if ('manaValueOf' in a) return objects(s, view, a.manaValueOf, ctx).reduce((n, o) => n + manaValue(s.setup.cards[o.card]!.manaCost), 0);
   if ('times' in a) return amount(s, view, a.times, ctx, x) * a.by;

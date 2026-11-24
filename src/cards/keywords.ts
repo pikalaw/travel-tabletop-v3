@@ -26,3 +26,9 @@ export const landcycling = (type: string, cost = '{2}'): ActivatedAbility => ({
   effects: [{ search: { subtypes: [type] }, to: 'hand' }],
   text: `${type}cycling ${cost}`,
 });
+
+/** Equip {N} (702.6): "Attach to target creature you control. Equip only as a sorcery." */
+export const equip = (cost: string): ActivatedAbility => ({
+  cost: { mana: cost }, timing: 'sorcery', targets: [{ objects: { types: ['Creature'], controller: 'you' } }],
+  effects: [{ attach: { target: 0 } }], text: `Equip ${cost}`,
+});

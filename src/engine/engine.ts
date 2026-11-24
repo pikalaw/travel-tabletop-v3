@@ -8,14 +8,14 @@ import type { ActivatedAbility, Effect, TargetSpec } from './abilities';
 import { characteristics, isType, summoningSick, view } from './characteristics';
 import { attackers, canAttack, canBlock, checkAttack, checkBlocks, checkSplit, dealCombatDamage, declareAttackers, declareBlockers, endCombat, hasFirstStrikeStep, splitsToAsk } from './combat';
 import { runEffects } from './effects';
-import { amount, holds, type Context } from './evaluate';
+import { amount, holds, matches, type Context } from './evaluate';
 import { parseCost, solvePayment, type ManaSource } from './mana';
 import { seedRng } from './rng';
 import { stateBasedActions } from './sba';
 import { battlefield, controlledBy, createObject, draw, event, move, obj, printed, shuffleLibrary, zoneOf } from './state';
 import { checkTargets, hasTargets, isLegalTarget, legalTargets, onlyChoice } from './targets';
 import { fire, triggeredAbility } from './triggers';
-import type { Choice, Color, Decision, GameSetup, GameState, ManaSymbol, ObjectId, PendingTrigger, PlayerId, Refusal, Step, Target, ZoneId } from './types';
+import type { Choice, Color, Decision, GameObject, GameSetup, GameState, ManaSymbol, ObjectId, PendingTrigger, PlayerId, Refusal, Step, Target, ZoneId } from './types';
 import { COLORS, PLAYERS, STEPS, other } from './types';
 import { leaveBattlefield, putOntoBattlefield, tap } from './zones';
 
@@ -42,7 +42,7 @@ export function start(setup: GameSetup, seed: number): GameState {
     }])) as GameState['players'],
     objects: {}, zones, nextId: 1, nextTimestamp: 1, rng: seedRng(seed), decision: null, assignments: {},
     result: null, events: [], pendingTurnBased: false, effects: [], pendingTriggers: [], resolving: null,
-    activatedThisTurn: {}, exhausted: {}, turnLog: freshTurnLog(),
+    activatedThisTurn: {}, exhausted: {}, lastKnown: {}, turnLog: freshTurnLog(),
   };
   for (const p of PLAYERS) {
     for (const card of setup.players[p].deck) {
@@ -134,12 +134,46 @@ function costToPay(s: GameState, p: PlayerId, mana: ManaSymbol[], waterbend = 0,
   const cost: ManaSymbol[] = waterbend ? [...mana, { kind: 'generic', amount: waterbend }] : mana;
   const all = manaSources(s, p, { waterbend: waterbend > 0 }).filter((m) => !(tapsSource && (m.id === source || m.id === `wb:${source}`)));
   const own = all.filter((m) => m.id === `wb:${source}`);
-  return solvePayment(cost, [...all.filter((m) => m.id !== `wb:${source}`), ...own]);
+  const sources = [...all.filter((m) => m.id !== `wb:${source}`), ...own];
+  const plain = solvePayment(cost, sources);
+  if (plain) return plain;
+  // A "{1}: Add one mana of any color" ability (Barrels of Blasting Jelly) turns one other mana
+  // into any colour: try each source in turn as the one spent on it.
+  for (const conv of converters(s, p)) {
+    for (let i = 0; i < sources.length; i++) {
+      const m = sources[i]!;
+      if (m.genericOnly || m.id === conv.id) continue;
+      const via: ManaSource = { id: `via:${conv.id}:${conv.index}>${m.id}`, makes: [...COLORS], ...(m.floating ? { floating: true } : {}) };
+      const got = solvePayment(cost, sources.map((x, j) => (j === i ? via : x)));
+      if (got) return got;
+    }
+  }
+  return null;
+}
+
+/** Untapped-or-not permanents with an unused "{1}: Add one mana of any color. Activate only once each turn." */
+function converters(s: GameState, p: PlayerId): { id: ObjectId; index: number }[] {
+  const out: { id: ObjectId; index: number }[] = [];
+  for (const o of controlledBy(s, p)) {
+    if (characteristics(s, o).abilitiesRemoved) continue;
+    activatedOf(s, o.id).forEach((a, index) => {
+      const any = a.effects.some((e) => 'addMana' in e && e.anyColor);
+      if (a.mana && any && a.cost.mana === '{1}' && !a.cost.tap && a.oncePerTurn && !s.activatedThisTurn[`${o.id}:${index}`]) out.push({ id: o.id, index });
+    });
+  }
+  return out;
 }
 
 function pay(s: GameState, p: PlayerId, sources: string[]): void {
   const tapped = new Map<ObjectId, number>();
-  for (const id of sources) {
+  for (let id of sources) {
+    if (id.startsWith('via:')) {
+      // The mana from this source pays the converter's {1}; the converter makes the colour needed.
+      const [conv, inner] = id.slice(4).split('>') as [string, string];
+      s.activatedThisTurn[conv] = (s.activatedThisTurn[conv] ?? 0) + 1;
+      event(s, `${playerName(s, p)} activates ${nameOf(s, conv.split(':')[0]!)} for mana of any colour`);
+      id = inner;
+    }
     const [kind, c] = id.split(':') as [string, Color | 'C'];
     if (kind === 'pool') s.players[p].pool[c]--;
     else if (kind === 'combat') s.players[p].combatPool[c]--;
@@ -161,9 +195,12 @@ const sorcerySpeed = (s: GameState, p: PlayerId) =>
   s.active === p && (s.step === 'main1' || s.step === 'main2') && s.zones.stack.length === 0;
 
 /** Why `p` can't play this land now, or null. */
+/** "You may play that card this turn" (Zuko, Exiled Prince). */
+const playableFromExile = (s: GameState, p: PlayerId, o: GameObject) => o.zone === zoneOf(p, 'exile') && o.owner === p && o.playableTurn === s.turn;
+
 export function whyNotPlay(s: GameState, p: PlayerId, id: ObjectId): string | null {
   const o = s.objects[id];
-  if (!o || o.zone !== zoneOf(p, 'hand')) return 'Not in your hand';
+  if (!o || (o.zone !== zoneOf(p, 'hand') && !playableFromExile(s, p, o))) return 'Not in your hand';
   if (!isType(s, o, 'Land')) return 'Not a land';
   if (!sorcerySpeed(s, p)) return 'Lands are played in your main phase with an empty stack';
   if (s.players[p].landsPlayed >= 1 + s.players[p].extraLands) return 'You have played a land this turn';
@@ -184,6 +221,7 @@ function shiftTargets<T>(v: T, by: number): T {
 /** A spell's target specs and effects; for a modal spell, those of the chosen modes, in order. */
 export function spellAbility(s: GameState, id: ObjectId, modes?: number[]): { specs: TargetSpec[]; effects: Effect[] } {
   const spell = spellOf(s, id);
+  if (spell?.enchant) return { specs: [{ objects: spell.enchant }], effects: [] };
   if (!spell?.modes) return { specs: spell?.targets ?? [], effects: spell?.effects ?? [] };
   const specs: TargetSpec[] = [];
   const effects: Effect[] = [];
@@ -208,7 +246,7 @@ function checkModes(s: GameState, id: ObjectId, modes?: number[]): string | null
 /** Why `p` can't cast this card now, or null. With `targets`, also whether those are legal. */
 export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Target[][], modes?: number[], x = 0): string | null {
   const o = s.objects[id];
-  const fromExile = !!o && o.zone === zoneOf(p, 'exile') && !!o.airbended && o.owner === p;
+  const fromExile = !!o && o.zone === zoneOf(p, 'exile') && o.owner === p && (!!o.airbended || playableFromExile(s, p, o));
   if (!o || (o.zone !== zoneOf(p, 'hand') && !fromExile)) return 'Not in your hand';
   if (isType(s, o, 'Land')) return 'Lands are played, not cast';
   const spellDef = spellOf(s, id);
@@ -246,7 +284,14 @@ function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0) {
 }
 
 /** Why `p` can't activate ability `index` of this permanent now, or null. With `targets`, also whether those are legal. */
-export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: number, targets?: Target[][]): string | null {
+/** Creatures that could be tapped for a "tap an untapped creature you control" cost. */
+export function tapCandidates(s: GameState, p: PlayerId, a: ActivatedAbility): ObjectId[] {
+  const f = a.cost.tapAnother;
+  if (!f) return [];
+  return controlledBy(s, p).filter((o) => !o.tapped && isType(s, o, 'Creature') && matches(s, view(s), o, f, ctxFor(p, o.id))).map((o) => o.id);
+}
+
+export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: number, targets?: Target[][], tapping?: ObjectId[]): string | null {
   const o = s.objects[id];
   const a = o ? activatedOf(s, id)[index] : undefined;
   if (!o || !a) return 'No such ability';
@@ -262,6 +307,11 @@ export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: n
   if (a.cost.tap && o.tapped) return 'It is tapped';
   if (a.cost.tap && isType(s, o, 'Creature') && summoningSick(s, o)) return 'It came under your control this turn';
   if (a.cost.payLife && s.players[p].life < a.cost.payLife) return 'Not enough life';
+  if (a.cost.tapAnother) {
+    const can = tapCandidates(s, p, a);
+    if (!can.length) return 'No untapped creature to tap';
+    if (tapping && (tapping.length !== 1 || !can.includes(tapping[0]!))) return 'Choose an untapped creature you control to tap';
+  }
   // Mana for the cost comes from other sources when the ability taps this one.
   if ((a.cost.mana || a.cost.waterbend) && !costToPay(s, p, parseCost(a.cost.mana ?? ''), a.cost.waterbend, id, !!a.cost.tap)) return 'Not enough mana of the right colours';
   if (!hasTargets(s, a.targets ?? [], ctxFor(p, id))) return 'No legal target';
@@ -278,7 +328,7 @@ export function legalActions(s: GameState): Choice[] {
   switch (d.kind) {
     case 'mulligan': return [{ kind: 'keep' }, { kind: 'mulligan' }];
     case 'legend': return d.objects.map((keep) => ({ kind: 'legend', keep }));
-    case 'may': case 'payOrCounter': return [{ kind: 'yes' }, { kind: 'no' }];
+    case 'may': case 'payOrElse': return [{ kind: 'yes' }, { kind: 'no' }];
     case 'priority': {
       const p = d.player;
       const out: Choice[] = [{ kind: 'pass' }];
@@ -286,7 +336,10 @@ export function legalActions(s: GameState): Choice[] {
         if (!whyNotPlay(s, p, id)) out.push({ kind: 'play', object: id });
         if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
       }
-      for (const id of s.zones[zoneOf(p, 'exile')]) if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
+      for (const id of s.zones[zoneOf(p, 'exile')]) {
+        if (!whyNotPlay(s, p, id)) out.push({ kind: 'play', object: id });
+        if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
+      }
       const withAbilities = [...controlledBy(s, p).map((o) => o.id), ...hand(s, p), ...s.zones[zoneOf(p, 'graveyard')]];
       for (const id of withAbilities) {
         activatedOf(s, id).forEach((a, i) => { if (!a.mana && !whyNotActivate(s, p, id, i)) out.push({ kind: 'activate', object: id, ability: i }); });
@@ -445,10 +498,11 @@ function apply(s: GameState, d: Decision, c: Choice): string | null {
       continueResolving(s, c);
       return null;
     }
-    case 'payOrCounter': {
+    case 'payOrElse': {
       if (c.kind !== 'yes' && c.kind !== 'no') return wrong(d, c);
-      if (c.kind === 'yes' && !costToPay(s, p, parseCost(d.cost))) return 'Not enough mana';
-      if (c.kind === 'yes') pay(s, p, costToPay(s, p, parseCost(d.cost))!.sources);
+      const payment = costToPay(s, p, parseCost(d.cost), d.waterbend ?? 0);
+      if (c.kind === 'yes' && !payment) return 'Not enough mana';
+      if (c.kind === 'yes') pay(s, p, payment!.sources);
       continueResolving(s, c);
       return null;
     }
@@ -463,6 +517,14 @@ function apply(s: GameState, d: Decision, c: Choice): string | null {
       if (c.kind !== 'arrange') return wrong(d, c);
       const all = [...c.top, ...c.away];
       if (all.length !== d.cards.length || new Set(all).size !== all.length || all.some((id) => !d.cards.includes(id))) return 'Place each looked-at card once';
+      continueResolving(s, c);
+      return null;
+    }
+    case 'pick': {
+      if (c.kind !== 'pick') return wrong(d, c);
+      if (c.cards.length < d.min || c.cards.length > d.max || new Set(c.cards).size !== c.cards.length || c.cards.some((id) => !d.options.includes(id))) {
+        return d.min === d.max ? `Choose ${d.min} of the cards offered` : `Choose up to ${d.max} of the cards offered`;
+      }
       continueResolving(s, c);
       return null;
     }
@@ -531,10 +593,12 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
     }
     case 'activate': {
       const specs = s.objects[c.object] ? activatedOf(s, c.object)[c.ability]?.targets ?? [] : [];
-      const bad = whyNotActivate(s, p, c.object, c.ability, c.targets ?? []);
+      const a = s.objects[c.object] ? activatedOf(s, c.object)[c.ability] : undefined;
+      const tapping = c.tapping ?? (a && tapCandidates(s, p, a).length === 1 ? tapCandidates(s, p, a) : undefined);
+      const bad = whyNotActivate(s, p, c.object, c.ability, c.targets ?? [], tapping);
       if (bad) return specs.length && !c.targets ? 'Choose targets' : bad;
-      activate(s, p, c.object, c.ability, c.targets ?? []);
-      return null;
+      if (a?.cost.tapAnother && !tapping) return 'Choose a creature to tap';
+      return activate(s, p, c.object, c.ability, c.targets ?? [], tapping ?? []);
     }
     default:
       return `Expected an answer to "priority", got "${c.kind}"`;
@@ -548,13 +612,19 @@ function describeTargets(s: GameState, targets?: Target[][]): string {
 }
 
 /** Activates an ability (602.2): pay its costs; a mana ability then resolves at once (605.3), any other goes on the stack. */
-function activate(s: GameState, p: PlayerId, id: ObjectId, index: number, targets: Target[][]): void {
+/** Activates an ability whose legality was checked; refuses (the copy is dropped) if tapping a creature for the cost left too little mana. */
+function activate(s: GameState, p: PlayerId, id: ObjectId, index: number, targets: Target[][], tapping: ObjectId[] = []): string | null {
   const a = activatedOf(s, id)[index]!;
   const card = obj(s, id).card;
   const sourceName = nameOf(s, id);
   s.activatedThisTurn[`${id}:${index}`] = (s.activatedThisTurn[`${id}:${index}`] ?? 0) + 1;
   if (a.exhaust) s.exhausted[`${id}:${index}`] = true;
-  if (a.cost.mana || a.cost.waterbend) pay(s, p, costToPay(s, p, parseCost(a.cost.mana ?? ''), a.cost.waterbend, id, !!a.cost.tap)!.sources);
+  for (const t of tapping) { tap(s, t); event(s, `${playerName(s, p)} taps ${nameOf(s, t)}`); }
+  if (a.cost.mana || a.cost.waterbend) {
+    const payment = costToPay(s, p, parseCost(a.cost.mana ?? ''), a.cost.waterbend, id, !!a.cost.tap);
+    if (!payment) return 'Not enough mana of the right colours';
+    pay(s, p, payment.sources);
+  }
   if (a.cost.tap) tap(s, id);
   if (a.cost.payLife) s.players[p].life -= a.cost.payLife;
   if (a.mana) {
@@ -562,15 +632,17 @@ function activate(s: GameState, p: PlayerId, id: ObjectId, index: number, target
     runEffects(s);
     s.resolving = null;
     if (a.cost.sacrificeSelf) leaveBattlefield(s, [id], 'graveyard');
-    return;
+    return null;
   }
   const ab = createObject(s, card, p, 'stack');
-  ab.ability = { source: id, sourceName, kind: 'activated', index };
+  const attachedTo = obj(s, id).attachedTo;
+  ab.ability = { source: id, sourceName, kind: 'activated', index, ...(attachedTo ? { attachedTo } : {}) };
   ab.targets = targets;
   if (a.cost.sacrificeSelf) leaveBattlefield(s, [id], 'graveyard');
   if (a.cost.discardSelf) { event(s, `${playerName(s, p)} discards ${sourceName}`); move(s, id, zoneOf(p, 'graveyard')); }
   event(s, `${playerName(s, p)} activates ${sourceName}: ${a.text}${describeTargets(s, targets)}`);
   s.passes = 0;
+  return null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -646,8 +718,13 @@ function resolveTop(s: GameState): void {
     return;
   }
   event(s, `${label} resolves`);
-  if (!a && PERMANENT_TYPES.some((t) => isType(s, o, t))) { putOntoBattlefield(s, id, o.controller); s.priority = s.active; return; }
-  s.resolving = { object: id, effects: [...effects], pc: 0, controller: o.controller, source, targets: legal, specs, ...(ctx.eventObject ? { eventObject: ctx.eventObject } : {}), ...(o.x !== undefined ? { x: o.x } : {}) };
+  if (!a && PERMANENT_TYPES.some((t) => isType(s, o, t))) {
+    const attachTo = spellOf(s, id)?.enchant ? legal[0]?.[0] : undefined;
+    putOntoBattlefield(s, id, o.controller, attachTo ? { attachTo } : {});
+    s.priority = s.active;
+    return;
+  }
+  s.resolving = { object: id, effects: [...effects], pc: 0, controller: o.controller, source, targets: legal, specs, ...(ctx.eventObject ? { eventObject: ctx.eventObject } : {}), ...(o.x !== undefined ? { x: o.x } : {}), ...(a?.attachedTo ? { attachedTo: a.attachedTo } : {}) };
   continueResolving(s);
 }
 
@@ -710,6 +787,7 @@ function advance(s: GameState): void {
     for (const q of PLAYERS) s.players[q].extraLands = 0;
     s.activatedThisTurn = {};
     s.turnLog = freshTurnLog();
+    s.lastKnown = {}; // every leave trigger has resolved: the stack was empty to end the turn
     enterStep(s, 'untap');
     return;
   }
@@ -741,6 +819,7 @@ function turnBased(s: GameState): void {
       for (const o of battlefield(s)) {
         const always = s.setup.cards[o.card]?.script?.replacements?.some((r) => 'untapsEachUntapStep' in r.replace);
         if (o.controller !== a && !always) continue;
+        if (characteristics(s, o).keywords.includes("doesn't untap") && o.controller === a) continue; // 502.3
         if (!o.tapped) continue;
         // 122.1d: a stunned permanent stays tapped, losing a stun counter instead of untapping.
         if ((o.counters.stun ?? 0) > 0) { o.counters.stun!--; continue; }

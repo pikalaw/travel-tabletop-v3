@@ -139,7 +139,7 @@ describe('Beginner Box, batch 4', () => {
     let { s, ids } = board({ p1: lands(4), p2: lands(2, 'Island'), hand1: ['Lightning Strike'], hand2: ["It'll Quench Ya!"] });
     s = act(act(s, { kind: 'cast', object: ids.hand1[0]!, targets: [['p2']] }), { kind: 'pass' });
     s = passBoth(act(s, { kind: 'cast', object: ids.hand2[0]!, targets: [[s.zones.stack[0]!]] }));
-    expect(s.decision).toEqual({ kind: 'payOrCounter', player: 'p1', cost: '{2}' });
+    expect(s.decision).toMatchObject({ kind: 'payOrElse', player: 'p1', cost: '{2}' });
     const paid = settle(act(s, { kind: 'yes' }));
     expect(lifeOf(paid, 'p2')).toBe(17);
     const countered = settle(act(s, { kind: 'no' }));

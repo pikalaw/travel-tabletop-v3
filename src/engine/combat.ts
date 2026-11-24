@@ -15,12 +15,12 @@ const name = (s: GameState, o: GameObject) => characteristics(s, o).name;
 
 export function canAttack(s: GameState, o: GameObject): boolean {
   return o.zone === 'battlefield' && o.controller === s.active && isType(s, o, 'Creature') && !o.tapped
-    && !summoningSick(s, o) && !hasKeyword(s, o, 'defender');
+    && !summoningSick(s, o) && !hasKeyword(s, o, 'defender') && !hasKeyword(s, o, "can't attack or block");
 }
 
 export function canBlock(s: GameState, blocker: GameObject, attacker: GameObject): boolean {
   if (blocker.zone !== 'battlefield' || blocker.controller === s.active || !isType(s, blocker, 'Creature') || blocker.tapped) return false;
-  if (attacker.attacking === undefined) return false;
+  if (attacker.attacking === undefined || hasKeyword(s, blocker, "can't attack or block")) return false;
   if (hasKeyword(s, attacker, 'flying') && !hasKeyword(s, blocker, 'flying') && !hasKeyword(s, blocker, 'reach')) return false;
   if (hasKeyword(s, attacker, "can't be blocked")) return false;
   // The Spirit tokens: "can't block or be blocked by non-Spirit creatures".

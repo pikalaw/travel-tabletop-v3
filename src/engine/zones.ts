@@ -17,7 +17,7 @@ import { EARTHBEND_RETURN, fire } from './triggers';
 import type { GameObject, GameState, ObjectId, PlayerId } from './types';
 
 /** Puts an object (from any zone) onto the battlefield, as a new object (400.7). */
-export function putOntoBattlefield(s: GameState, id: ObjectId, controller: PlayerId, opts: { tapped?: boolean } = {}): ObjectId {
+export function putOntoBattlefield(s: GameState, id: ObjectId, controller: PlayerId, opts: { tapped?: boolean; attachTo?: ObjectId } = {}): ObjectId {
   return entered(s, move(s, id, 'battlefield', { controller }), opts);
 }
 
@@ -28,8 +28,9 @@ export function createToken(s: GameState, card: string, controller: PlayerId, op
 }
 
 /** What happens as a permanent enters: its own entering replacements (614.1c-d), then the event. */
-function entered(s: GameState, o: GameObject, opts: { tapped?: boolean }): ObjectId {
+function entered(s: GameState, o: GameObject, opts: { tapped?: boolean; attachTo?: ObjectId }): ObjectId {
   const reps = s.setup.cards[o.card]?.script?.replacements ?? [];
+  if (opts.attachTo) o.attachedTo = opts.attachTo; // an Aura enters attached (303.4f)
   o.tapped = !!opts.tapped || reps.some((r) => 'entersTapped' in r.replace);
   o.controlledSince = s.turn;
   // Entering with counters is counters being put on it, so "that many plus one" applies too.
@@ -64,6 +65,7 @@ export function leaveBattlefield(s: GameState, ids: ObjectId[], to: 'graveyard' 
     const token = isToken(s, id);
     const earthbent = s.effects.find((e) => e.effect.earthbent && e.affected.includes(id));
     const name = v(o).name;
+    if (Object.keys(o.counters).length) s.lastKnown[id] = { counters: { ...o.counters } };
     const n = move(s, id, zoneOf(o.owner, d));
     if (token) { s.zones[n.zone].splice(s.zones[n.zone].indexOf(n.id), 1); delete s.objects[n.id]; continue; }
     // 701.65: an earthbent land that dies or is exiled comes back, by a triggered ability of its earthbending.

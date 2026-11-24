@@ -24,6 +24,7 @@ export interface Filter {
   controller?: 'you' | 'opponent';
   other?: boolean;           // not the ability's source
   self?: boolean;            // the ability's source itself ("if ~ is tapped")
+  attached?: boolean;        // what the source Aura or Equipment is attached to ("enchanted creature")
   tapped?: boolean;
   attacking?: boolean;
   blocking?: boolean;
@@ -58,6 +59,7 @@ export type ObjectRef =
 export type Amount =
   | number
   | { count: Filter }
+  /** Counters of a kind ("*": every kind) on objects, or on one as it last existed if it left (608.2h). */
   | { counters: string; on: ObjectRef }
   | { powerOf: ObjectRef }
   | { manaValueOf: ObjectRef }
@@ -88,7 +90,8 @@ export type Duration = 'endOfTurn' | 'endOfCombat' | 'permanent';
 export type Effect =
   | { draw: PlayerRef; n: Amount }
   | { discard: PlayerRef; n: Amount }
-  | { damage: Amount; to: ObjectRef | PlayerRef; from?: ObjectRef }
+  /** `gainExcess`: "You gain life equal to the excess damage dealt this way" (120.4a). */
+  | { damage: Amount; to: ObjectRef | PlayerRef; from?: ObjectRef; gainExcess?: boolean }
   | { gainLife: PlayerRef; n: Amount }
   | { loseLife: PlayerRef; n: Amount }
   | { addCounters: string; n: Amount; on: ObjectRef }
@@ -113,7 +116,25 @@ export type Effect =
   /** Airbend (701.66): exile it; while exiled, its owner may cast it for {2}. A token airbended ceases to exist. */
   | { airbend: ObjectRef }
   | { returnToBattlefield: ObjectRef; tapped?: boolean }
+  /** Attach this Aura or Equipment to an object (701.3). */
+  | { attach: ObjectRef }
+  /** "Its owner shuffles it into their library." */
+  | { shuffleIntoLibrary: ObjectRef }
   | { mill: PlayerRef; n: Amount }
+  /** "Put its counters on …": every counter the object had, as it last existed. */
+  | { putCountersOf: ObjectRef; on: ObjectRef }
+  /**
+   * Look at the top N of your library and you may put a matching card into your hand; the rest go
+   * to the bottom in a random order, or (mill) all go to the graveyard first. `otherwise` runs if
+   * none was taken ("If you don't, put a +1/+1 counter on this creature").
+   */
+  | { lookAtTop: Amount; mayTake: Filter; rest: 'bottomRandom' | 'mill'; otherwise?: Effect[] }
+  /** "Target opponent reveals their hand. You choose a … card from it. That player discards that card." */
+  | { revealAndDiscard: PlayerRef; choose: Filter }
+  /** "Exile the top card of your library. You may play that card this turn." */
+  | { exileTopPlayable: true }
+  /** "… unless you pay / waterbend …": the controller may pay; if they don't, the effects run. */
+  | { unlessPays: { mana?: string; waterbend?: number }; then: Effect[] }
   /** Scry N or surveil N (701.22, 701.25): look at the top N, then put any on the bottom (scry) or into the graveyard (surveil). */
   | { scry: Amount }
   | { surveil: Amount }
@@ -148,6 +169,8 @@ export interface Cost {
   tap?: boolean;
   sacrificeSelf?: boolean;
   payLife?: number;
+  /** "Tap an untapped creature you control" (not {T}: summoning sickness doesn't matter). */
+  tapAnother?: Filter;
 }
 
 /** One mode of a modal spell (700.2): its own targets and effects, target indices local to it. */
@@ -156,6 +179,8 @@ export interface Mode { targets?: TargetSpec[]; effects: Effect[]; text: string 
 export interface SpellAbility {
   targets?: TargetSpec[];
   effects: Effect[];
+  /** An Aura spell (303.4a): what it can enchant, which is its target. */
+  enchant?: Filter;
   /** A modal spell: how many modes to choose (`max` with `min` 1 is "one or both"), and the modes. */
   modes?: { min: number; max: number; options: Mode[] };
   /** An additional cost to cast it (601.2f), such as "waterbend {5}". */
