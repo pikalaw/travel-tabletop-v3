@@ -90,6 +90,11 @@ export interface GameObject {
   attachedTo?: ObjectId;
   /** Exiled by airbending: its owner may cast it from exile for {2}. */
   airbended?: boolean;
+  /** The colour chosen as it entered (Thriving lands). */
+  chosenColor?: Color;
+  /** For a spell on the stack: the modes chosen and the value of X. */
+  modes?: number[];
+  x?: number;
 }
 
 /** A chosen target: an object or a player. */
@@ -140,6 +145,7 @@ export interface Resolving {
   targets: Target[][];
   specs: TargetSpec[];
   eventObject?: ObjectId;
+  x?: number;
 }
 
 export interface PlayerState {
@@ -149,6 +155,8 @@ export interface PlayerState {
   /** Mana that lasts until end of combat (firebending), not emptied as steps end. */
   combatPool: Record<Color | 'C', number>;
   landsPlayed: number;
+  /** Additional land drops this turn (Explore). */
+  extraLands: number;
   /** Set by drawing from an empty library; checked as a state-based action. */
   drewFromEmpty: boolean;
   mulligans: number;
@@ -167,7 +175,10 @@ export type Decision =
   | { kind: 'triggerOrder'; player: PlayerId; triggers: number[] }
   | { kind: 'triggerTargets'; player: PlayerId; trigger: number }
   | { kind: 'may'; player: PlayerId; text: string }
-  | { kind: 'discardEffect'; player: PlayerId; count: number };
+  | { kind: 'discardEffect'; player: PlayerId; count: number }
+  | { kind: 'chooseColor'; player: PlayerId; object: ObjectId; options: Color[] }
+  | { kind: 'arrange'; player: PlayerId; cards: ObjectId[]; to: 'bottom' | 'graveyard' }
+  | { kind: 'search'; player: PlayerId; options: ObjectId[]; max: number };
 
 export type Choice =
   | { kind: 'keep' }
@@ -175,10 +186,14 @@ export type Choice =
   | { kind: 'bottom'; cards: ObjectId[] }
   | { kind: 'pass' }
   | { kind: 'play'; object: ObjectId }
-  | { kind: 'cast'; object: ObjectId; targets?: Target[][] }
+  | { kind: 'cast'; object: ObjectId; targets?: Target[][]; modes?: number[]; x?: number }
   | { kind: 'activate'; object: ObjectId; ability: number; targets?: Target[][] }
   | { kind: 'order'; triggers: number[] }
   | { kind: 'targets'; targets: Target[][] }
+  | { kind: 'color'; color: Color }
+  /** Scry or surveil: the cards kept on top, top first, and the ones moved away. */
+  | { kind: 'arrange'; top: ObjectId[]; away: ObjectId[] }
+  | { kind: 'search'; cards: ObjectId[] }
   | { kind: 'yes' }
   | { kind: 'no' }
   | { kind: 'attack'; attackers: ObjectId[] }

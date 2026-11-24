@@ -40,7 +40,7 @@ export interface Filter {
   toughness?: Compare;
   manaValue?: Compare;
   /** Default battlefield. */
-  zone?: 'battlefield' | 'graveyard' | 'hand' | 'stack' | 'exile';
+  zone?: 'battlefield' | 'graveyard' | 'hand' | 'stack' | 'exile' | 'library';
 }
 export interface Compare { op: '<=' | '>=' | '=='; n: number }
 
@@ -68,6 +68,7 @@ export type Amount =
 
 export type Condition =
   | { atLeast: Amount; n: number }
+  | { xAtLeast: number }
   | { not: Condition }
   | { all: Condition[] }
   | 'yourTurn'
@@ -87,6 +88,8 @@ export type Effect =
   | { loseLife: PlayerRef; n: Amount }
   | { addCounters: string; n: Amount; on: ObjectRef }
   | { removeCounters: string; n: Amount; on: ObjectRef }
+  /** "Remove up to N counters from it": the most of any kinds, +1/+1 first (the controller's choice; the pool's one use is a removal spell). */
+  | { removeAnyCounters: number; on: ObjectRef }
   | { pump: ObjectRef; power: Amount; toughness: Amount; duration: Duration }
   /** Any continuous effect on these objects for a duration: "loses all abilities and is 1/1 until end of turn". */
   | { continuous: Omit<Continuous, 'affects'>; on: ObjectRef; duration: Duration }
@@ -99,13 +102,20 @@ export type Effect =
   | { untap: ObjectRef }
   | { sacrifice: ObjectRef }
   | { createToken: string; n: Amount; controller?: PlayerRef; tapped?: boolean; attacking?: boolean }
-  | { addMana: (Color | 'C')[]; n?: Amount; anyColor?: boolean; untilEndOfCombat?: boolean }
+  | { addMana: (Color | 'C')[]; n?: Amount; anyColor?: boolean; untilEndOfCombat?: boolean; orChosenColor?: boolean }
   /** Earthbend N (701.65): the target land becomes a 0/0 creature with haste that's still a land, gets N +1/+1 counters, and returns tapped when it dies or is exiled. */
   | { earthbend: Amount; on: ObjectRef }
   /** Airbend (701.66): exile it; while exiled, its owner may cast it for {2}. A token airbended ceases to exist. */
   | { airbend: ObjectRef }
   | { returnToBattlefield: ObjectRef; tapped?: boolean }
   | { mill: PlayerRef; n: Amount }
+  /** Scry N or surveil N (701.22, 701.25): look at the top N, then put any on the bottom (scry) or into the graveyard (surveil). */
+  | { scry: Amount }
+  | { surveil: Amount }
+  /** Search your library for up to `n` cards matching the filter, put them somewhere, then shuffle (701.23). */
+  | { search: Filter; n?: number; to: 'hand' | 'battlefield'; tapped?: boolean }
+  /** "You may play an additional land this turn." */
+  | { extraLand: number }
   | { counterSpell: ObjectRef }
   | { may: Effect[] }
   | { if: Condition; then: Effect[]; else?: Effect[] };
@@ -120,6 +130,8 @@ export type TargetSpec =
 
 export interface Cost {
   mana?: string;             // e.g. "{2}{R}"
+  /** Discard this card (cycling, from the hand). */
+  discardSelf?: boolean;
   /** Waterbend {N} (701.67): generic mana you may pay in part by tapping your untapped artifacts and creatures, one each. */
   waterbend?: number;
   tap?: boolean;
@@ -127,9 +139,14 @@ export interface Cost {
   payLife?: number;
 }
 
+/** One mode of a modal spell (700.2): its own targets and effects, target indices local to it. */
+export interface Mode { targets?: TargetSpec[]; effects: Effect[]; text: string }
+
 export interface SpellAbility {
   targets?: TargetSpec[];
   effects: Effect[];
+  /** A modal spell: how many modes to choose (`max` with `min` 1 is "one or both"), and the modes. */
+  modes?: { min: number; max: number; options: Mode[] };
   /** An additional cost to cast it (601.2f), such as "waterbend {5}". */
   additionalCost?: Cost;
 }
@@ -145,6 +162,8 @@ export interface ActivatedAbility {
   mana?: boolean;
   /** Exhaust (702.177): activate each only once. */
   exhaust?: boolean;
+  /** Where the card must be to activate it; default the battlefield (cycling: the hand). */
+  zone?: 'hand' | 'graveyard';
   text: string;
 }
 
@@ -201,6 +220,7 @@ export interface StaticAbility { effect: Continuous; while?: Condition; text: st
 /** Replacement effects (614), applied as the event is about to happen. */
 export type Replacement =
   | { entersTapped: true }                                   // this permanent
+  | { entersChoosingColor: { except?: Color } }             // "As it enters, choose a color other than red"
   | { entersWithCounters: string; n: number }               // this permanent
   | { moreCounters: string; extra: number; on: Filter };    // Solid Ground
 

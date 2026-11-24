@@ -28,6 +28,8 @@ export interface Context {
   source: ObjectId;
   targets?: Target[][];
   eventObject?: ObjectId;
+  /** The value chosen for X. */
+  x?: number;
 }
 
 const zoneName = (o: GameObject) => (o.zone.includes('.') ? o.zone.split('.')[1]! : o.zone);
@@ -83,7 +85,7 @@ export function objects(s: GameState, view: View, ref: ObjectRef, ctx: Context):
   return select(s, view, ref.all, ctx);
 }
 
-export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = 0): number {
+export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ctx.x ?? 0): number {
   if (typeof a === 'number') return a;
   if (a === 'x') return x;
   if ('count' in a) return select(s, view, a.count, ctx).length;
@@ -99,5 +101,6 @@ export function holds(s: GameState, view: View, c: Condition, ctx: Context): boo
   if ('not' in c) return !holds(s, view, c.not, ctx);
   if ('all' in c) return c.all.every((x) => holds(s, view, x, ctx));
   if ('exists' in c) return select(s, view, c.exists, ctx).length > 0;
+  if ('xAtLeast' in c) return (ctx.x ?? 0) >= c.xAtLeast;
   return amount(s, view, c.atLeast, ctx) >= c.n;
 }

@@ -22,6 +22,7 @@ export function canBlock(s: GameState, blocker: GameObject, attacker: GameObject
   if (blocker.zone !== 'battlefield' || blocker.controller === s.active || !isType(s, blocker, 'Creature') || blocker.tapped) return false;
   if (attacker.attacking === undefined) return false;
   if (hasKeyword(s, attacker, 'flying') && !hasKeyword(s, blocker, 'flying') && !hasKeyword(s, blocker, 'reach')) return false;
+  if (hasKeyword(s, attacker, "can't be blocked")) return false;
   return true;
 }
 

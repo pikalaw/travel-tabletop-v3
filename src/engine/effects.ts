@@ -5,8 +5,8 @@
  */
 import type { Effect, ObjectRef, PlayerRef } from './abilities';
 import { characteristics, view } from './characteristics';
-import { amount, holds, objects, type Context } from './evaluate';
-import { draw, event, move, obj, top, zoneOf } from './state';
+import { amount, holds, matches, objects, type Context } from './evaluate';
+import { draw, event, move, obj, shuffleLibrary, top, zoneOf } from './state';
 import type { Choice, GameState, PlayerId, Target } from './types';
 import { other, PLAYERS } from './types';
 import { addCounters, createToken, leaveBattlefield, putOntoBattlefield, tap } from './zones';
@@ -16,7 +16,7 @@ const name = (s: GameState, p: PlayerId) => s.setup.players[p].name;
 
 function ctxOf(s: GameState): Context {
   const r = s.resolving!;
-  return { controller: r.controller, source: r.source, targets: r.targets, ...(r.eventObject ? { eventObject: r.eventObject } : {}) };
+  return { controller: r.controller, source: r.source, targets: r.targets, ...(r.eventObject ? { eventObject: r.eventObject } : {}), ...(r.x !== undefined ? { x: r.x } : {}) };
 }
 
 function players(s: GameState, ref: PlayerRef, ctx: Context): PlayerId[] {
@@ -105,6 +105,15 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
     for (const o of objs(s, e.on, ctx)) addCounters(s, o.id, e.addCounters, n(e.n));
   } else if ('removeCounters' in e) {
     for (const o of objs(s, e.on, ctx)) o.counters[e.removeCounters] = Math.max(0, (o.counters[e.removeCounters] ?? 0) - n(e.n));
+  } else if ('removeAnyCounters' in e) {
+    for (const o of objs(s, e.on, ctx)) {
+      let left = e.removeAnyCounters;
+      for (const k of Object.keys(o.counters).sort((a, b) => Number(b === '+1/+1') - Number(a === '+1/+1'))) {
+        const take = Math.min(left, o.counters[k] ?? 0);
+        o.counters[k] = (o.counters[k] ?? 0) - take;
+        left -= take;
+      }
+    }
   } else if ('pump' in e) {
     const affected = objs(s, e.pump, ctx).map((o) => o.id);
     s.effects.push({ effect: { affects: 'self', modify: [n(e.power), n(e.toughness)] }, affected, timestamp: s.nextTimestamp++, duration: e.duration, controller: ctx.controller, source: ctx.source });
@@ -125,7 +134,9 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
   } else if ('exile' in e) {
     leaveBattlefield(s, objs(s, e.exile, ctx).map((o) => o.id), 'exile');
   } else if ('bounce' in e) {
-    leaveBattlefield(s, objs(s, e.bounce, ctx).map((o) => o.id), 'hand');
+    const targets = objs(s, e.bounce, ctx);
+    leaveBattlefield(s, targets.filter((o) => o.zone === 'battlefield').map((o) => o.id), 'hand');
+    for (const o of targets) if (o.zone.endsWith('.graveyard')) move(s, o.id, zoneOf(o.owner, 'hand')); // "return this card from your graveyard"
   } else if ('sacrifice' in e) {
     leaveBattlefield(s, objs(s, e.sacrifice, ctx).filter((o) => o.controller === ctx.controller).map((o) => o.id), 'graveyard');
   } else if ('tap' in e) {
@@ -166,6 +177,32 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
       event(s, `${characteristics(s, o).name} returns to the battlefield`);
       putOntoBattlefield(s, o.id, ctx.controller, { tapped: !!e.tapped });
     }
+  } else if ('scry' in e || 'surveil' in e) {
+    // 701.22, 701.25: the player looks at the top cards (privately) and decides where each goes.
+    const p = ctx.controller;
+    const lib = s.zones[zoneOf(p, 'library')];
+    const k = Math.min(n('scry' in e ? e.scry : e.surveil), lib.length);
+    if (k === 0) return 'next';
+    const top = lib.slice(lib.length - k).reverse(); // top first
+    if (!choice) { s.decision = { kind: 'arrange', player: p, cards: top, to: 'scry' in e ? 'bottom' : 'graveyard' }; return 'wait'; }
+    if (choice.kind !== 'arrange') throw new Error('expected an arrangement');
+    const away = choice.away;
+    s.zones[zoneOf(p, 'library')] = [...lib.slice(0, lib.length - k).filter((id) => !away.includes(id)), ...[...choice.top].reverse()];
+    if ('scry' in e) s.zones[zoneOf(p, 'library')].unshift(...[...away].reverse());
+    else for (const id of away) move(s, id, zoneOf(p, 'graveyard'));
+    event(s, `${name(s, p)} ${'scry' in e ? 'scries' : 'surveils'} ${k}: ${choice.top.length} on top, ${away.length} ${'scry' in e ? 'on the bottom' : 'into the graveyard'}`);
+  } else if ('search' in e) {
+    const p = ctx.controller;
+    const options = s.zones[zoneOf(p, 'library')].filter((id) => matches(s, v, s.objects[id]!, { ...e.search, zone: 'library' }, ctx));
+    if (!choice) { s.decision = { kind: 'search', player: p, options, max: e.n ?? 1 }; return 'wait'; }
+    if (choice.kind !== 'search') throw new Error('expected a search');
+    for (const id of choice.cards) {
+      event(s, `${name(s, p)} finds ${characteristics(s, obj(s, id)).name}`);
+      if (e.to === 'hand') move(s, id, zoneOf(p, 'hand')); else putOntoBattlefield(s, id, p, { tapped: !!e.tapped });
+    }
+    shuffleLibrary(s, p);
+  } else if ('extraLand' in e) {
+    s.players[ctx.controller].extraLands += e.extraLand;
   } else if ('mill' in e) {
     for (const p of players(s, e.mill, ctx)) for (let i = n(e.n); i > 0; i--) { const id = top(s, p); if (id) move(s, id, zoneOf(p, 'graveyard')); }
   } else if ('counterSpell' in e) {

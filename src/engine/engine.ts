@@ -37,7 +37,7 @@ export function start(setup: GameSetup, seed: number): GameState {
   const s: GameState = {
     seq: 0, setup, turn: 0, active: setup.first, step: 'untap', priority: null, passes: 0,
     players: Object.fromEntries(PLAYERS.map((p) => [p, {
-      life: STARTING_LIFE, pool: emptyPool(), combatPool: emptyPool(), landsPlayed: 0, drewFromEmpty: false, mulligans: 0, kept: false,
+      life: STARTING_LIFE, pool: emptyPool(), combatPool: emptyPool(), landsPlayed: 0, extraLands: 0, drewFromEmpty: false, mulligans: 0, kept: false,
     }])) as GameState['players'],
     objects: {}, zones, nextId: 1, nextTimestamp: 1, rng: seedRng(seed), decision: null, assignments: {},
     result: null, events: [], pendingTurnBased: false, effects: [], pendingTriggers: [], resolving: null,
@@ -68,7 +68,8 @@ function tapForMana(s: GameState, id: ObjectId): (Color | 'C')[] | null {
   const basic = c.subtypes.map((t) => BASIC_MANA[t]).filter((m): m is Color => !!m);
   const scripted = c.abilitiesRemoved ? [] : activatedOf(s, id).flatMap((a) => {
     if (!a.mana || !a.cost.tap || a.cost.mana || a.cost.sacrificeSelf || a.cost.payLife) return [];
-    return a.effects.flatMap((e) => ('addMana' in e ? (e.anyColor ? [...COLORS] : e.addMana) : []));
+    const chosen = obj(s, id).chosenColor;
+    return a.effects.flatMap((e) => ('addMana' in e ? (e.anyColor ? [...COLORS] : [...e.addMana, ...(e.orChosenColor && chosen ? [chosen] : [])]) : []));
   });
   const makes = [...new Set([...basic, ...scripted])];
   return makes.length ? makes : null;
@@ -133,28 +134,72 @@ export function whyNotPlay(s: GameState, p: PlayerId, id: ObjectId): string | nu
   if (!o || o.zone !== zoneOf(p, 'hand')) return 'Not in your hand';
   if (!isType(s, o, 'Land')) return 'Not a land';
   if (!sorcerySpeed(s, p)) return 'Lands are played in your main phase with an empty stack';
-  if (s.players[p].landsPlayed >= 1) return 'You have played a land this turn';
+  if (s.players[p].landsPlayed >= 1 + s.players[p].extraLands) return 'You have played a land this turn';
+  return null;
+}
+
+/** Shifts every {target: n} in effects by `by`, so a mode's local target indices fit the whole spell. */
+function shiftTargets<T>(v: T, by: number): T {
+  if (Array.isArray(v)) return v.map((x) => shiftTargets(x, by)) as T;
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) out[k] = (k === 'target' || k === 'controlledByTarget') && typeof x === 'number' ? x + by : shiftTargets(x, by);
+    return out as T;
+  }
+  return v;
+}
+
+/** A spell's target specs and effects; for a modal spell, those of the chosen modes, in order. */
+export function spellAbility(s: GameState, id: ObjectId, modes?: number[]): { specs: TargetSpec[]; effects: Effect[] } {
+  const spell = spellOf(s, id);
+  if (!spell?.modes) return { specs: spell?.targets ?? [], effects: spell?.effects ?? [] };
+  const specs: TargetSpec[] = [];
+  const effects: Effect[] = [];
+  for (const m of modes ?? []) {
+    const mode = spell.modes.options[m]!;
+    effects.push(...shiftTargets(mode.effects, specs.length));
+    specs.push(...(mode.targets ?? []));
+  }
+  return { specs, effects };
+}
+
+function checkModes(s: GameState, id: ObjectId, modes?: number[]): string | null {
+  const m = spellOf(s, id)?.modes;
+  if (!m) return modes?.length ? 'This spell has no modes' : null;
+  if (!modes) return 'Choose modes';
+  if (modes.length < m.min || modes.length > m.max) return m.min === m.max ? `Choose ${m.min} mode${m.min > 1 ? 's' : ''}` : `Choose ${m.min} to ${m.max} modes`;
+  if (modes.some((i) => !m.options[i])) return 'No such mode';
+  if (new Set(modes).size !== modes.length && m.max < 3) return 'A mode is chosen twice';
   return null;
 }
 
 /** Why `p` can't cast this card now, or null. With `targets`, also whether those are legal. */
-export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Target[][]): string | null {
+export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Target[][], modes?: number[], x = 0): string | null {
   const o = s.objects[id];
   const fromExile = !!o && o.zone === zoneOf(p, 'exile') && !!o.airbended && o.owner === p;
   if (!o || (o.zone !== zoneOf(p, 'hand') && !fromExile)) return 'Not in your hand';
   if (isType(s, o, 'Land')) return 'Lands are played, not cast';
   const instantSpeed = isType(s, o, 'Instant') || characteristics(s, o).keywords.includes('flash');
   if (!instantSpeed && !sorcerySpeed(s, p)) return 'Only in your main phase with an empty stack';
-  if (!spellPayment(s, p, id)) return 'Not enough mana of the right colours';
-  const specs = spellOf(s, id)?.targets ?? [];
+  if (!spellPayment(s, p, id, x)) return 'Not enough mana of the right colours';
+  const spell = spellOf(s, id);
+  if (spell?.modes && targets === undefined) {
+    // Castable if enough modes could each be chosen with legal targets.
+    const ok = spell.modes.options.filter((m) => hasTargets(s, m.targets ?? [], ctxFor(p, id))).length;
+    return ok >= spell.modes.min ? null : 'No legal target';
+  }
+  if (targets !== undefined) { const bad = checkModes(s, id, modes); if (bad) return bad; }
+  const { specs } = spellAbility(s, id, modes);
   if (!hasTargets(s, specs, ctxFor(p, id))) return 'No legal target';
   return targets === undefined ? null : checkTargets(s, specs, targets, ctxFor(p, id));
 }
 
 /** The payment for casting a card now: its mana cost, or {2} from airbending exile (701.66), plus any additional waterbend cost. */
-function spellPayment(s: GameState, p: PlayerId, id: ObjectId) {
+function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0) {
   const o = obj(s, id);
-  const cost = o.zone.endsWith('.exile') && o.airbended ? parseCost('{2}') : printed(s, o).manaCost;
+  const printedCost = o.zone.endsWith('.exile') && o.airbended ? parseCost('{2}') : printed(s, o).manaCost;
+  // 107.3: X is paid as the chosen number.
+  const cost = printedCost.map((m): ManaSymbol => (m.kind === 'x' ? { kind: 'generic', amount: x } : m));
   const extra = spellOf(s, id)?.additionalCost;
   return costToPay(s, p, extra?.mana ? [...cost, ...parseCost(extra.mana)] : cost, extra?.waterbend ?? 0);
 }
@@ -162,10 +207,13 @@ function spellPayment(s: GameState, p: PlayerId, id: ObjectId) {
 /** Why `p` can't activate ability `index` of this permanent now, or null. With `targets`, also whether those are legal. */
 export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: number, targets?: Target[][]): string | null {
   const o = s.objects[id];
-  if (!o || o.zone !== 'battlefield' || o.controller !== p) return 'Not a permanent you control';
+  const a = o ? activatedOf(s, id)[index] : undefined;
+  if (!o || !a) return 'No such ability';
+  const where = a.zone ? zoneOf(p, a.zone) : 'battlefield';
+  if (o.zone !== where || (where === 'battlefield' ? o.controller !== p : o.owner !== p)) {
+    return a.zone === 'hand' ? 'Not in your hand' : a.zone === 'graveyard' ? 'Not in your graveyard' : 'Not a permanent you control';
+  }
   if (characteristics(s, o).abilitiesRemoved) return 'It has lost its abilities';
-  const a = activatedOf(s, id)[index];
-  if (!a) return 'No such ability';
   if (a.timing === 'sorcery' && !sorcerySpeed(s, p)) return 'Only as a sorcery';
   if (a.timing === 'yourTurn' && s.active !== p) return 'Only during your turn';
   if (a.oncePerTurn && s.activatedThisTurn[`${id}:${index}`]) return 'Only once each turn';
@@ -198,8 +246,9 @@ export function legalActions(s: GameState): Choice[] {
         if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
       }
       for (const id of s.zones[zoneOf(p, 'exile')]) if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
-      for (const o of controlledBy(s, p)) {
-        activatedOf(s, o.id).forEach((a, i) => { if (!a.mana && !whyNotActivate(s, p, o.id, i)) out.push({ kind: 'activate', object: o.id, ability: i }); });
+      const withAbilities = [...controlledBy(s, p).map((o) => o.id), ...hand(s, p), ...s.zones[zoneOf(p, 'graveyard')]];
+      for (const id of withAbilities) {
+        activatedOf(s, id).forEach((a, i) => { if (!a.mana && !whyNotActivate(s, p, id, i)) out.push({ kind: 'activate', object: id, ability: i }); });
       }
       return out;
     }
@@ -347,6 +396,26 @@ function apply(s: GameState, d: Decision, c: Choice): string | null {
       continueResolving(s, c);
       return null;
     }
+    case 'chooseColor': {
+      if (c.kind !== 'color') return wrong(d, c);
+      if (!d.options.includes(c.color)) return 'Choose one of the offered colours';
+      obj(s, d.object).chosenColor = c.color;
+      event(s, `${playerName(s, p)} chooses ${c.color} for ${nameOf(s, d.object)}`);
+      return null;
+    }
+    case 'arrange': {
+      if (c.kind !== 'arrange') return wrong(d, c);
+      const all = [...c.top, ...c.away];
+      if (all.length !== d.cards.length || new Set(all).size !== all.length || all.some((id) => !d.cards.includes(id))) return 'Place each looked-at card once';
+      continueResolving(s, c);
+      return null;
+    }
+    case 'search': {
+      if (c.kind !== 'search') return wrong(d, c);
+      if (c.cards.length > d.max || new Set(c.cards).size !== c.cards.length || c.cards.some((id) => !d.options.includes(id))) return `Choose up to ${d.max} of the cards that match`;
+      continueResolving(s, c);
+      return null;
+    }
   }
 }
 
@@ -380,19 +449,26 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       const bad = whyNotPlay(s, p, c.object);
       if (bad) return bad;
       event(s, `${playerName(s, p)} plays ${nameOf(s, c.object)}`);
-      putOntoBattlefield(s, c.object, p);
+      const land = putOntoBattlefield(s, c.object, p);
       s.players[p].landsPlayed++;
+      // "As it enters, choose a color": asked straight away, before anyone could use it.
+      const choose = s.setup.cards[obj(s, land).card]?.script?.replacements?.find((r) => 'entersChoosingColor' in r.replace)?.replace;
+      if (choose && 'entersChoosingColor' in choose) s.decision = { kind: 'chooseColor', player: p, object: land, options: COLORS.filter((x) => x !== choose.entersChoosingColor.except) };
       s.passes = 0;
       return null;
     }
     case 'cast': {
-      const specs = s.objects[c.object] ? spellOf(s, c.object)?.targets ?? [] : [];
-      const bad = whyNotCast(s, p, c.object, c.targets ?? []);
+      const specs = s.objects[c.object] ? spellAbility(s, c.object, c.modes).specs : [];
+      const x = c.x ?? 0;
+      if (!Number.isInteger(x) || x < 0) return 'X must be a whole number';
+      const bad = whyNotCast(s, p, c.object, c.targets ?? [], c.modes, x);
       if (bad) return specs.length && !c.targets ? 'Choose targets' : bad;
-      pay(s, p, spellPayment(s, p, c.object)!.sources);
-      event(s, `${playerName(s, p)} casts ${nameOf(s, c.object)}${describeTargets(s, c.targets)}`);
+      pay(s, p, spellPayment(s, p, c.object, x)!.sources);
+      event(s, `${playerName(s, p)} casts ${nameOf(s, c.object)}${c.x !== undefined ? ` with X = ${x}` : ''}${describeTargets(s, c.targets)}`);
       const spell = move(s, c.object, 'stack', { controller: p });
       spell.targets = c.targets ?? [];
+      if (c.modes) spell.modes = c.modes;
+      if (c.x !== undefined) spell.x = x;
       s.passes = 0;
       fire(s, { kind: 'cast', object: spell.id, player: p }); // 601.2i
       return null;
@@ -436,6 +512,7 @@ function activate(s: GameState, p: PlayerId, id: ObjectId, index: number, target
   ab.ability = { source: id, sourceName, kind: 'activated', index };
   ab.targets = targets;
   if (a.cost.sacrificeSelf) leaveBattlefield(s, [id], 'graveyard');
+  if (a.cost.discardSelf) { event(s, `${playerName(s, p)} discards ${sourceName}`); move(s, id, zoneOf(p, 'graveyard')); }
   event(s, `${playerName(s, p)} activates ${sourceName}: ${a.text}${describeTargets(s, targets)}`);
   s.passes = 0;
 }
@@ -501,8 +578,7 @@ function resolveTop(s: GameState): void {
       return;
     }
   } else {
-    effects = spellOf(s, id)?.effects ?? [];
-    specs = spellOf(s, id)?.targets ?? [];
+    ({ effects, specs } = spellAbility(s, id, o.modes));
   }
   // 608.2b: targets are checked again; with every one illegal, the spell or ability does nothing.
   const chosen = o.targets ?? [];
@@ -515,7 +591,7 @@ function resolveTop(s: GameState): void {
   }
   event(s, `${label} resolves`);
   if (!a && PERMANENT_TYPES.some((t) => isType(s, o, t))) { putOntoBattlefield(s, id, o.controller); s.priority = s.active; return; }
-  s.resolving = { object: id, effects: [...effects], pc: 0, controller: o.controller, source, targets: legal, specs, ...(ctx.eventObject ? { eventObject: ctx.eventObject } : {}) };
+  s.resolving = { object: id, effects: [...effects], pc: 0, controller: o.controller, source, targets: legal, specs, ...(ctx.eventObject ? { eventObject: ctx.eventObject } : {}), ...(o.x !== undefined ? { x: o.x } : {}) };
   continueResolving(s);
 }
 
@@ -575,6 +651,7 @@ function advance(s: GameState): void {
     s.turn++;
     s.active = other(s.active);
     s.players[s.active].landsPlayed = 0;
+    for (const q of PLAYERS) s.players[q].extraLands = 0;
     s.activatedThisTurn = {};
     enterStep(s, 'untap');
     return;
