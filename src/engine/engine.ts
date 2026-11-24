@@ -15,7 +15,7 @@ import { stateBasedActions } from './sba';
 import { battlefield, controlledBy, createObject, draw, event, move, obj, printed, shuffleLibrary, zoneOf } from './state';
 import { checkTargets, hasTargets, isLegalTarget, legalTargets, onlyChoice } from './targets';
 import { fire, triggeredAbility } from './triggers';
-import type { Choice, Color, Decision, GameSetup, GameState, ObjectId, PendingTrigger, PlayerId, Refusal, Step, Target, ZoneId } from './types';
+import type { Choice, Color, Decision, GameSetup, GameState, ManaSymbol, ObjectId, PendingTrigger, PlayerId, Refusal, Step, Target, ZoneId } from './types';
 import { COLORS, PLAYERS, STEPS, other } from './types';
 import { leaveBattlefield, putOntoBattlefield, tap } from './zones';
 
@@ -37,11 +37,11 @@ export function start(setup: GameSetup, seed: number): GameState {
   const s: GameState = {
     seq: 0, setup, turn: 0, active: setup.first, step: 'untap', priority: null, passes: 0,
     players: Object.fromEntries(PLAYERS.map((p) => [p, {
-      life: STARTING_LIFE, pool: emptyPool(), landsPlayed: 0, drewFromEmpty: false, mulligans: 0, kept: false,
+      life: STARTING_LIFE, pool: emptyPool(), combatPool: emptyPool(), landsPlayed: 0, drewFromEmpty: false, mulligans: 0, kept: false,
     }])) as GameState['players'],
     objects: {}, zones, nextId: 1, nextTimestamp: 1, rng: seedRng(seed), decision: null, assignments: {},
     result: null, events: [], pendingTurnBased: false, effects: [], pendingTriggers: [], resolving: null,
-    activatedThisTurn: {},
+    activatedThisTurn: {}, exhausted: {},
   };
   for (const p of PLAYERS) {
     for (const card of setup.players[p].deck) {
@@ -74,22 +74,49 @@ function tapForMana(s: GameState, id: ObjectId): (Color | 'C')[] | null {
   return makes.length ? makes : null;
 }
 
-export function manaSources(s: GameState, p: PlayerId): ManaSource[] {
+/**
+ * What `p` can pay mana with now: floating mana (including mana that lasts until end of combat),
+ * then untapped mana sources. For a waterbend cost, also each untapped artifact and creatures not
+ * already a mana source, paying generic only (701.67; like convoke, summoning sickness doesn't matter).
+ */
+export function manaSources(s: GameState, p: PlayerId, opts: { waterbend?: boolean } = {}): ManaSource[] {
   const out: ManaSource[] = [];
-  const pool = s.players[p].pool;
-  for (const c of [...COLORS, 'C'] as const) for (let i = 0; i < pool[c]; i++) out.push({ id: `pool:${c}:${i}`, makes: [c], floating: true });
+  for (const [prefix, pool] of [['pool', s.players[p].pool], ['combat', s.players[p].combatPool]] as const) {
+    for (const c of [...COLORS, 'C'] as const) for (let i = 0; i < pool[c]; i++) out.push({ id: `${prefix}:${c}:${i}`, makes: [c], floating: true });
+  }
+  const mana = new Set<ObjectId>();
   for (const o of controlledBy(s, p)) {
     if (o.tapped) continue;
     if (isType(s, o, 'Creature') && summoningSick(s, o)) continue;
     const makes = tapForMana(s, o.id);
-    if (makes) out.push({ id: o.id, makes });
+    if (makes) { out.push({ id: o.id, makes }); mana.add(o.id); }
+  }
+  if (opts.waterbend) {
+    for (const o of controlledBy(s, p)) {
+      if (o.tapped || mana.has(o.id) || !(isType(s, o, 'Artifact') || isType(s, o, 'Creature'))) continue;
+      out.push({ id: `wb:${o.id}`, makes: [], genericOnly: true });
+    }
   }
   return out;
 }
 
+/**
+ * A cost's mana and waterbend parts as one cost to solve, and the sources that may pay it. The
+ * ability's own source is excluded when the cost taps it, and otherwise tapped for waterbend last.
+ */
+function costToPay(s: GameState, p: PlayerId, mana: ManaSymbol[], waterbend = 0, source?: ObjectId, tapsSource = false) {
+  const cost: ManaSymbol[] = waterbend ? [...mana, { kind: 'generic', amount: waterbend }] : mana;
+  const all = manaSources(s, p, { waterbend: waterbend > 0 }).filter((m) => !(tapsSource && (m.id === source || m.id === `wb:${source}`)));
+  const own = all.filter((m) => m.id === `wb:${source}`);
+  return solvePayment(cost, [...all.filter((m) => m.id !== `wb:${source}`), ...own]);
+}
+
 function pay(s: GameState, p: PlayerId, sources: string[]): void {
   for (const id of sources) {
-    if (id.startsWith('pool:')) { const c = id.split(':')[1] as Color | 'C'; s.players[p].pool[c]--; }
+    const [kind, c] = id.split(':') as [string, Color | 'C'];
+    if (kind === 'pool') s.players[p].pool[c]--;
+    else if (kind === 'combat') s.players[p].combatPool[c]--;
+    else if (kind === 'wb') tap(s, id.slice(3));
     else tap(s, id);
   }
 }
@@ -113,14 +140,23 @@ export function whyNotPlay(s: GameState, p: PlayerId, id: ObjectId): string | nu
 /** Why `p` can't cast this card now, or null. With `targets`, also whether those are legal. */
 export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Target[][]): string | null {
   const o = s.objects[id];
-  if (!o || o.zone !== zoneOf(p, 'hand')) return 'Not in your hand';
+  const fromExile = !!o && o.zone === zoneOf(p, 'exile') && !!o.airbended && o.owner === p;
+  if (!o || (o.zone !== zoneOf(p, 'hand') && !fromExile)) return 'Not in your hand';
   if (isType(s, o, 'Land')) return 'Lands are played, not cast';
   const instantSpeed = isType(s, o, 'Instant') || characteristics(s, o).keywords.includes('flash');
   if (!instantSpeed && !sorcerySpeed(s, p)) return 'Only in your main phase with an empty stack';
-  if (!solvePayment(printed(s, o).manaCost, manaSources(s, p))) return 'Not enough mana of the right colours';
+  if (!spellPayment(s, p, id)) return 'Not enough mana of the right colours';
   const specs = spellOf(s, id)?.targets ?? [];
   if (!hasTargets(s, specs, ctxFor(p, id))) return 'No legal target';
   return targets === undefined ? null : checkTargets(s, specs, targets, ctxFor(p, id));
+}
+
+/** The payment for casting a card now: its mana cost, or {2} from airbending exile (701.66), plus any additional waterbend cost. */
+function spellPayment(s: GameState, p: PlayerId, id: ObjectId) {
+  const o = obj(s, id);
+  const cost = o.zone.endsWith('.exile') && o.airbended ? parseCost('{2}') : printed(s, o).manaCost;
+  const extra = spellOf(s, id)?.additionalCost;
+  return costToPay(s, p, extra?.mana ? [...cost, ...parseCost(extra.mana)] : cost, extra?.waterbend ?? 0);
 }
 
 /** Why `p` can't activate ability `index` of this permanent now, or null. With `targets`, also whether those are legal. */
@@ -133,12 +169,12 @@ export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: n
   if (a.timing === 'sorcery' && !sorcerySpeed(s, p)) return 'Only as a sorcery';
   if (a.timing === 'yourTurn' && s.active !== p) return 'Only during your turn';
   if (a.oncePerTurn && s.activatedThisTurn[`${id}:${index}`]) return 'Only once each turn';
+  if (a.exhaust && s.exhausted[`${id}:${index}`]) return 'Exhaust: it has been activated';
   if (a.cost.tap && o.tapped) return 'It is tapped';
   if (a.cost.tap && isType(s, o, 'Creature') && summoningSick(s, o)) return 'It came under your control this turn';
   if (a.cost.payLife && s.players[p].life < a.cost.payLife) return 'Not enough life';
   // Mana for the cost comes from other sources when the ability taps this one.
-  const sources = manaSources(s, p).filter((m) => !(a.cost.tap && m.id === id));
-  if (a.cost.mana && !solvePayment(parseCost(a.cost.mana), sources)) return 'Not enough mana of the right colours';
+  if ((a.cost.mana || a.cost.waterbend) && !costToPay(s, p, parseCost(a.cost.mana ?? ''), a.cost.waterbend, id, !!a.cost.tap)) return 'Not enough mana of the right colours';
   if (!hasTargets(s, a.targets ?? [], ctxFor(p, id))) return 'No legal target';
   return targets === undefined ? null : checkTargets(s, a.targets ?? [], targets, ctxFor(p, id));
 }
@@ -161,6 +197,7 @@ export function legalActions(s: GameState): Choice[] {
         if (!whyNotPlay(s, p, id)) out.push({ kind: 'play', object: id });
         if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
       }
+      for (const id of s.zones[zoneOf(p, 'exile')]) if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
       for (const o of controlledBy(s, p)) {
         activatedOf(s, o.id).forEach((a, i) => { if (!a.mana && !whyNotActivate(s, p, o.id, i)) out.push({ kind: 'activate', object: o.id, ability: i }); });
       }
@@ -352,7 +389,7 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       const specs = s.objects[c.object] ? spellOf(s, c.object)?.targets ?? [] : [];
       const bad = whyNotCast(s, p, c.object, c.targets ?? []);
       if (bad) return specs.length && !c.targets ? 'Choose targets' : bad;
-      pay(s, p, solvePayment(printed(s, obj(s, c.object)).manaCost, manaSources(s, p))!.sources);
+      pay(s, p, spellPayment(s, p, c.object)!.sources);
       event(s, `${playerName(s, p)} casts ${nameOf(s, c.object)}${describeTargets(s, c.targets)}`);
       const spell = move(s, c.object, 'stack', { controller: p });
       spell.targets = c.targets ?? [];
@@ -384,7 +421,8 @@ function activate(s: GameState, p: PlayerId, id: ObjectId, index: number, target
   const card = obj(s, id).card;
   const sourceName = nameOf(s, id);
   s.activatedThisTurn[`${id}:${index}`] = (s.activatedThisTurn[`${id}:${index}`] ?? 0) + 1;
-  if (a.cost.mana) pay(s, p, solvePayment(parseCost(a.cost.mana), manaSources(s, p).filter((m) => !(a.cost.tap && m.id === id)))!.sources);
+  if (a.exhaust) s.exhausted[`${id}:${index}`] = true;
+  if (a.cost.mana || a.cost.waterbend) pay(s, p, costToPay(s, p, parseCost(a.cost.mana ?? ''), a.cost.waterbend, id, !!a.cost.tap)!.sources);
   if (a.cost.tap) tap(s, id);
   if (a.cost.payLife) s.players[p].life -= a.cost.payLife;
   if (a.mana) {
@@ -531,6 +569,7 @@ function advance(s: GameState): void {
   if (s.step === 'endCombat') {
     endCombat(s);
     s.effects = s.effects.filter((e) => e.duration !== 'endOfCombat');
+    for (const q of PLAYERS) for (const c of [...COLORS, 'C'] as const) s.players[q].combatPool[c] = 0;
   }
   if (i === STEPS.length - 1) {
     s.turn++;

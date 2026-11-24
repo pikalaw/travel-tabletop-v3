@@ -38,6 +38,8 @@ export interface ManaSource {
   makes: readonly (Color | 'C')[];
   /** Floating mana is spent before anything is tapped. */
   floating?: boolean;
+  /** Pays only generic mana: an artifact or creature tapped for a waterbend cost. Used last. */
+  genericOnly?: boolean;
 }
 
 /** Which source pays which symbol: indexes into the cost's non-generic symbols, then generic. */
@@ -45,13 +47,15 @@ export interface Payment { sources: string[] }
 
 /**
  * Finds a way to pay `cost` from `sources`, or null when there is none. X is paid as 0. Sources
- * are preferred in this order: floating mana, then sources that make fewer kinds of mana, so that
- * flexible sources stay untapped; ties keep the given order, which makes the result deterministic.
+ * are preferred in this order: floating mana, then mana sources before generic-only ones (keeping
+ * creatures untapped), then sources that make fewer kinds of mana, so that flexible sources stay
+ * untapped; ties keep the given order, which makes the result deterministic.
  */
 export function solvePayment(cost: readonly ManaSymbol[], sources: readonly ManaSource[]): Payment | null {
   const order = sources
     .map((s, i) => ({ s, i }))
-    .sort((a, b) => Number(!!b.s.floating) - Number(!!a.s.floating) || a.s.makes.length - b.s.makes.length || a.i - b.i)
+    .sort((a, b) => Number(!!b.s.floating) - Number(!!a.s.floating) || Number(!!a.s.genericOnly) - Number(!!b.s.genericOnly)
+      || a.s.makes.length - b.s.makes.length || a.i - b.i)
     .map((x) => x.s);
   const needs = cost.flatMap((sym): (readonly (Color | 'C')[])[] =>
     sym.kind === 'color' ? [[sym.color]] : sym.kind === 'hybrid' ? [sym.colors] : sym.kind === 'colorless' ? [['C']] : []);
@@ -60,7 +64,7 @@ export function solvePayment(cost: readonly ManaSymbol[], sources: readonly Mana
 
   // Kuhn's augmenting paths: matchOf[source] = the symbol it pays.
   const matchOf = new Array<number>(order.length).fill(-1);
-  const can = (src: number, need: number) => needs[need]!.some((m) => order[src]!.makes.includes(m));
+  const can = (src: number, need: number) => !order[src]!.genericOnly && needs[need]!.some((m) => order[src]!.makes.includes(m));
   const augment = (need: number, seen: boolean[]): boolean => {
     for (let src = 0; src < order.length; src++) {
       if (seen[src] || !can(src, need)) continue;

@@ -13,7 +13,7 @@
 import { view } from './characteristics';
 import { matches, type Context } from './evaluate';
 import { createObject, event, move, zoneOf } from './state';
-import { fire } from './triggers';
+import { EARTHBEND_RETURN, fire } from './triggers';
 import type { GameObject, GameState, ObjectId, PlayerId } from './types';
 
 /** Puts an object (from any zone) onto the battlefield, as a new object (400.7). */
@@ -61,8 +61,14 @@ export function leaveBattlefield(s: GameState, ids: ObjectId[], to: 'graveyard' 
     const o = s.objects[id]!;
     const d = dest.get(id)!;
     const token = isToken(s, id);
+    const earthbent = s.effects.find((e) => e.effect.earthbent && e.affected.includes(id));
+    const name = v(o).name;
     const n = move(s, id, zoneOf(o.owner, d));
     if (token) { s.zones[n.zone].splice(s.zones[n.zone].indexOf(n.id), 1); delete s.objects[n.id]; continue; }
+    // 701.65: an earthbent land that dies or is exiled comes back, by a triggered ability of its earthbending.
+    if (earthbent && (d === 'graveyard' || d === 'exile')) {
+      s.pendingTriggers.push({ controller: earthbent.controller, source: n.id, sourceName: name, card: n.card, index: EARTHBEND_RETURN, eventObject: n.id });
+    }
     out.push(n.id);
   }
   // Auras and Equipment attached to something that left: Auras go to the graveyard as a

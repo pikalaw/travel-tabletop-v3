@@ -16,11 +16,14 @@ export type PlayerRef = 'you' | 'opponent' | 'each' | { target: number };
 /** A filter over objects. Every field present must hold. */
 export interface Filter {
   types?: string[];          // any of these card types
+  allTypes?: string[];       // every one of these ("land creature")
+  token?: boolean;           // a token, or (false) a nontoken
   subtypes?: string[];       // any of these subtypes
   supertypes?: string[];
   notTypes?: string[];
   controller?: 'you' | 'opponent';
   other?: boolean;           // not the ability's source
+  self?: boolean;            // the ability's source itself ("if ~ is tapped")
   tapped?: boolean;
   attacking?: boolean;
   blocking?: boolean;
@@ -95,8 +98,13 @@ export type Effect =
   | { tap: ObjectRef }
   | { untap: ObjectRef }
   | { sacrifice: ObjectRef }
-  | { createToken: string; n: Amount; controller?: PlayerRef; tapped?: boolean }
-  | { addMana: (Color | 'C')[]; n?: Amount; anyColor?: boolean }
+  | { createToken: string; n: Amount; controller?: PlayerRef; tapped?: boolean; attacking?: boolean }
+  | { addMana: (Color | 'C')[]; n?: Amount; anyColor?: boolean; untilEndOfCombat?: boolean }
+  /** Earthbend N (701.65): the target land becomes a 0/0 creature with haste that's still a land, gets N +1/+1 counters, and returns tapped when it dies or is exiled. */
+  | { earthbend: Amount; on: ObjectRef }
+  /** Airbend (701.66): exile it; while exiled, its owner may cast it for {2}. A token airbended ceases to exist. */
+  | { airbend: ObjectRef }
+  | { returnToBattlefield: ObjectRef; tapped?: boolean }
   | { mill: PlayerRef; n: Amount }
   | { counterSpell: ObjectRef }
   | { may: Effect[] }
@@ -112,12 +120,19 @@ export type TargetSpec =
 
 export interface Cost {
   mana?: string;             // e.g. "{2}{R}"
+  /** Waterbend {N} (701.67): generic mana you may pay in part by tapping your untapped artifacts and creatures, one each. */
+  waterbend?: number;
   tap?: boolean;
   sacrificeSelf?: boolean;
   payLife?: number;
 }
 
-export interface SpellAbility { targets?: TargetSpec[]; effects: Effect[] }
+export interface SpellAbility {
+  targets?: TargetSpec[];
+  effects: Effect[];
+  /** An additional cost to cast it (601.2f), such as "waterbend {5}". */
+  additionalCost?: Cost;
+}
 
 export interface ActivatedAbility {
   cost: Cost;
@@ -128,6 +143,8 @@ export interface ActivatedAbility {
   oncePerTurn?: boolean;
   /** A mana ability (605): no targets, makes mana, doesn't use the stack. */
   mana?: boolean;
+  /** Exhaust (702.177): activate each only once. */
+  exhaust?: boolean;
   text: string;
 }
 
@@ -166,12 +183,17 @@ export interface Continuous {
   /** 6: abilities added, or all removed. */
   addKeywords?: string[];
   removeAllAbilities?: boolean;
-  /** 7b: base power and toughness set. */
+  /** 7a: a characteristic-defining ability setting power ("~'s power is equal to …"). */
+  cdaPower?: Amount;
+  /** 7b: base power and toughness set, or base power alone. */
   setBase?: [number, number];
+  setBasePower?: number;
   /** 7c: power and toughness changed. */
   modify?: [Amount, Amount];
   /** Not a characteristic but a replacement with a duration: "if it would die this turn, exile it instead". */
   exileIfWouldDie?: boolean;
+  /** Earthbent: when this land dies or is exiled, it returns to the battlefield tapped (701.65). */
+  earthbent?: boolean;
 }
 
 export interface StaticAbility { effect: Continuous; while?: Condition; text: string }

@@ -88,6 +88,8 @@ export interface GameObject {
   ability?: StackAbility;
   /** An Aura or Equipment: what it is attached to. */
   attachedTo?: ObjectId;
+  /** Exiled by airbending: its owner may cast it from exile for {2}. */
+  airbended?: boolean;
 }
 
 /** A chosen target: an object or a player. */
@@ -144,6 +146,8 @@ export interface PlayerState {
   life: number;
   /** Floating mana by colour; C is colourless. */
   pool: Record<Color | 'C', number>;
+  /** Mana that lasts until end of combat (firebending), not emptied as steps end. */
+  combatPool: Record<Color | 'C', number>;
   landsPlayed: number;
   /** Set by drawing from an empty library; checked as a state-based action. */
   drewFromEmpty: boolean;
@@ -225,6 +229,8 @@ export interface GameState {
   resolving: Resolving | null;
   /** Activations this turn, by "objectId:index", for "activate only once each turn". */
   activatedThisTurn: Record<string, number>;
+  /** Exhaust abilities used, by "objectId:index" (702.177: each only once). */
+  exhausted: Record<string, true>;
   result: GameResult | null;
   /** Public events, oldest first. */
   events: GameEvent[];

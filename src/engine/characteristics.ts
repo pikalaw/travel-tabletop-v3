@@ -119,8 +119,13 @@ function compute(s: GameState): Map<ObjectId, Characteristics> {
     if (a.effect.removeAllAbilities) c.keywords = [];
     for (const k of a.effect.addKeywords ?? []) if (!c.keywords.includes(k)) c.keywords.push(k);
   });
+  // Layer 7a: characteristic-defining abilities.
+  each((e) => e.cdaPower !== undefined, (c, a) => { c.power = amount(s, view, a.effect.cdaPower!, a.ctx); });
   // Layer 7b: effects that set base power and toughness.
-  each((e) => !!e.setBase, (c, a) => { [c.power, c.toughness] = a.effect.setBase!; });
+  each((e) => !!e.setBase || e.setBasePower !== undefined, (c, a) => {
+    if (a.effect.setBase) [c.power, c.toughness] = a.effect.setBase;
+    if (a.effect.setBasePower !== undefined) c.power = a.effect.setBasePower;
+  });
   // Layer 7c: effects that modify power and toughness, and counters.
   each((e) => !!e.modify, (c, a) => {
     c.power += amount(s, view, a.effect.modify![0], a.ctx);

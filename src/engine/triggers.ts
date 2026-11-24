@@ -39,7 +39,17 @@ export function triggeredAbilities(s: GameState, o: GameObject, v: View): [numbe
   return [...own, ...kw];
 }
 
+/** Built-in delayed triggers, by index: the return of an earthbent land (701.65). */
+export const EARTHBEND_RETURN = 2000;
+const BUILT_IN: Record<number, TriggeredAbility> = {
+  [EARTHBEND_RETURN]: {
+    when: { leaves: {} }, effects: [{ returnToBattlefield: 'triggerObject', tapped: true }],
+    text: 'When it dies or is exiled, return it to the battlefield tapped under your control.',
+  },
+};
+
 export function triggeredAbility(s: GameState, card: string, index: number): TriggeredAbility {
+  if (BUILT_IN[index]) return BUILT_IN[index]!;
   if (index >= 1000) return KEYWORD_TRIGGERS[Object.keys(KEYWORD_TRIGGERS)[index - 1000]!]!;
   const t = s.setup.cards[card]?.script?.triggered?.[index];
   if (!t) throw new Error(`no triggered ability ${index} on ${card}`);

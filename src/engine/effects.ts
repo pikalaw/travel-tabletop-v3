@@ -9,7 +9,7 @@ import { amount, holds, objects, type Context } from './evaluate';
 import { draw, event, move, obj, top, zoneOf } from './state';
 import type { Choice, GameState, PlayerId, Target } from './types';
 import { other, PLAYERS } from './types';
-import { addCounters, createToken, leaveBattlefield, tap } from './zones';
+import { addCounters, createToken, leaveBattlefield, putOntoBattlefield, tap } from './zones';
 
 const isPlayer = (t: Target): t is PlayerId => t === 'p1' || t === 'p2';
 const name = (s: GameState, p: PlayerId) => s.setup.players[p].name;
@@ -135,12 +135,37 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
   } else if ('createToken' in e) {
     const [p = ctx.controller] = e.controller ? players(s, e.controller, ctx) : [ctx.controller];
     const k = n(e.n);
-    for (let i = 0; i < k; i++) createToken(s, e.createToken, p, { tapped: !!e.tapped });
+    for (let i = 0; i < k; i++) {
+      const id = createToken(s, e.createToken, p, { tapped: !!e.tapped || !!e.attacking });
+      // 506.3d: a token put onto the battlefield attacking attacks the player it is told to, and was never declared.
+      if (e.attacking && s.objects[id]) s.objects[id]!.attacking = other(p);
+    }
     event(s, `${name(s, p)} creates ${k} ${s.setup.cards[e.createToken]!.name} token${k > 1 ? 's' : ''}`);
   } else if ('addMana' in e) {
     if (e.anyColor) throw new Error('mana of any colour is chosen by the payment solver; the vocabulary adds it with M4');
     const k = e.n === undefined ? 1 : n(e.n);
-    for (const c of e.addMana) s.players[ctx.controller].pool[c] += k;
+    const pool = e.untilEndOfCombat ? s.players[ctx.controller].combatPool : s.players[ctx.controller].pool;
+    for (const c of e.addMana) pool[c] += k;
+  } else if ('earthbend' in e) {
+    for (const o of objs(s, e.on, ctx)) {
+      s.effects.push({
+        effect: { affects: 'self', addTypes: ['Creature'], setBase: [0, 0], addKeywords: ['haste'], earthbent: true },
+        affected: [o.id], timestamp: s.nextTimestamp++, duration: 'permanent', controller: ctx.controller, source: ctx.source,
+      });
+      event(s, `${v(o).name} is earthbent`);
+      addCounters(s, o.id, '+1/+1', n(e.earthbend));
+    }
+  } else if ('airbend' in e) {
+    for (const o of objs(s, e.airbend, ctx)) {
+      event(s, `${v(o).name} is airbent`);
+      for (const id of leaveBattlefield(s, [o.id], 'exile')) s.objects[id]!.airbended = true;
+    }
+  } else if ('returnToBattlefield' in e) {
+    for (const o of objs(s, e.returnToBattlefield, ctx)) {
+      if (o.zone === 'battlefield' || o.zone === 'stack') continue;
+      event(s, `${characteristics(s, o).name} returns to the battlefield`);
+      putOntoBattlefield(s, o.id, ctx.controller, { tapped: !!e.tapped });
+    }
   } else if ('mill' in e) {
     for (const p of players(s, e.mill, ctx)) for (let i = n(e.n); i > 0; i--) { const id = top(s, p); if (id) move(s, id, zoneOf(p, 'graveyard')); }
   } else if ('counterSpell' in e) {

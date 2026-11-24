@@ -39,11 +39,14 @@ export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx:
   const c = view(o);
   if (f.types && !f.types.some((t) => c.types.includes(t))) return false;
   if (f.notTypes && f.notTypes.some((t) => c.types.includes(t))) return false;
+  if (f.allTypes && !f.allTypes.every((t) => c.types.includes(t))) return false;
+  if (f.token !== undefined && !!s.setup.cards[o.card]?.token !== f.token) return false;
   if (f.subtypes && !f.subtypes.some((t) => c.subtypes.includes(t))) return false;
   if (f.supertypes && !f.supertypes.some((t) => c.supertypes.includes(t))) return false;
   if (f.controller === 'you' && o.controller !== ctx.controller) return false;
   if (f.controller === 'opponent' && o.controller === ctx.controller) return false;
   if (f.other && o.id === ctx.source) return false;
+  if (f.self && o.id !== ctx.source) return false;
   if (f.tapped !== undefined && o.tapped !== f.tapped) return false;
   if (f.attacking !== undefined && (o.attacking !== undefined) !== f.attacking) return false;
   if (f.blocking !== undefined && (o.blocking !== undefined) !== f.blocking) return false;
