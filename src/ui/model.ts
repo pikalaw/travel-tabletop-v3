@@ -200,3 +200,11 @@ export function passMeaning(s: GameState): string {
   };
   return next[s.step] ?? 'next step';
 }
+
+/** "4/6 = 2/4 printed, +1/+1 counter, +1/+1 from Iroh until end of turn" (PRD, "Auto-tallied numbers"). */
+export function ptBreakdown(s: GameState, id: ObjectId): string {
+  const c = characteristics(s, s.objects[id]!);
+  const sign = (n: number) => (n < 0 ? `−${-n}` : `+${n}`);
+  const parts = c.parts.map((p) => (p.set ? `${p.power}/${p.toughness} ${p.label}` : `${sign(p.power)}/${sign(p.toughness)} ${p.label}`));
+  return `${c.power}/${c.toughness} = ${parts.join(', ')}`;
+}

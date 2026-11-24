@@ -3,12 +3,12 @@
  * that needs a player's choice (a discard, a "may") stops with a decision; the answer resumes it at
  * the same place. `s.resolving` holds where it is, as plain data.
  */
-import type { Effect, ObjectRef, PlayerRef } from './abilities';
+import type { Continuous, Duration, Effect, ObjectRef, PlayerRef } from './abilities';
 import { characteristics, view } from './characteristics';
 import { amount, countersOf, holds, matches, objects, select, type Context } from './evaluate';
 import { shuffle } from './rng';
 import { draw, event, move, obj, shuffleLibrary, top, zoneOf } from './state';
-import type { Choice, GameState, PlayerId, Target } from './types';
+import type { Choice, GameState, ObjectId, PlayerId, Target } from './types';
 import { other, PLAYERS } from './types';
 import { addCounters, createToken, leaveBattlefield, putOntoBattlefield, tap } from './zones';
 
@@ -58,6 +58,12 @@ export function dealDamage(s: GameState, sourceId: string, to: Target, n: number
     event(s, `${srcName} deals ${n} damage to ${characteristics(s, o).name}`);
   }
   if (src && kws.includes('lifelink')) s.players[src.controller].life += n;
+}
+
+/** A continuous effect from a resolving spell or ability (611.2), its affected set fixed now. */
+function addEffect(s: GameState, ctx: Context, effect: Continuous, affected: ObjectId[], duration: Duration): void {
+  const src = s.objects[ctx.source];
+  s.effects.push({ effect, affected, timestamp: s.nextTimestamp++, duration, controller: ctx.controller, source: ctx.source, ...(src ? { sourceName: characteristics(s, src).name } : {}) });
 }
 
 /** Runs effects from s.resolving.pc. Returns 'wait' when a decision is needed, 'done' at the end. */
@@ -125,16 +131,16 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
     }
   } else if ('pump' in e) {
     const affected = objs(s, e.pump, ctx).map((o) => o.id);
-    s.effects.push({ effect: { affects: 'self', modify: [n(e.power), n(e.toughness)] }, affected, timestamp: s.nextTimestamp++, duration: e.duration, controller: ctx.controller, source: ctx.source });
+    addEffect(s, ctx, { affects: 'self', modify: [n(e.power), n(e.toughness)] }, affected, e.duration);
   } else if ('grant' in e) {
     const affected = objs(s, e.grant, ctx).map((o) => o.id);
-    s.effects.push({ effect: { affects: 'self', addKeywords: e.keywords }, affected, timestamp: s.nextTimestamp++, duration: e.duration, controller: ctx.controller, source: ctx.source });
+    addEffect(s, ctx, { affects: 'self', addKeywords: e.keywords }, affected, e.duration);
   } else if ('continuous' in e) {
     const affected = objs(s, e.on, ctx).map((o) => o.id);
-    s.effects.push({ effect: { affects: 'self', ...e.continuous }, affected, timestamp: s.nextTimestamp++, duration: e.duration, controller: ctx.controller, source: ctx.source });
+    addEffect(s, ctx, { affects: 'self', ...e.continuous }, affected, e.duration);
   } else if ('exileIfWouldDie' in e) {
     const affected = objs(s, e.exileIfWouldDie, ctx).map((o) => o.id);
-    s.effects.push({ effect: { affects: 'self', exileIfWouldDie: true }, affected, timestamp: s.nextTimestamp++, duration: e.duration, controller: ctx.controller, source: ctx.source });
+    addEffect(s, ctx, { affects: 'self', exileIfWouldDie: true }, affected, e.duration);
   } else if ('destroy' in e) {
     // 702.12b: indestructible permanents aren't destroyed.
     const ids = objs(s, e.destroy, ctx).filter((o) => !v(o).keywords.includes('indestructible')).map((o) => o.id);
@@ -169,10 +175,7 @@ function step(s: GameState, e: Effect, choice: Choice | undefined): 'next' | 'wa
     for (const c of e.addMana) pool[c] += k;
   } else if ('earthbend' in e) {
     for (const o of objs(s, e.on, ctx)) {
-      s.effects.push({
-        effect: { affects: 'self', addTypes: ['Creature'], setBase: [0, 0], addKeywords: ['haste'], earthbent: true },
-        affected: [o.id], timestamp: s.nextTimestamp++, duration: 'permanent', controller: ctx.controller, source: ctx.source,
-      });
+      addEffect(s, ctx, { affects: 'self', addTypes: ['Creature'], setBase: [0, 0], addKeywords: ['haste'], earthbent: true }, [o.id], 'permanent');
       event(s, `${v(o).name} is earthbent`);
       addCounters(s, o.id, '+1/+1', n(e.earthbend));
     }

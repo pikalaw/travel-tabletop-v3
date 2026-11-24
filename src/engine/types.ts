@@ -124,6 +124,8 @@ export interface EffectInstance {
   duration: Duration;
   controller: PlayerId;
   source: ObjectId;
+  /** The source's name as the effect began, for the breakdown of the numbers it changes. */
+  sourceName?: string;
 }
 
 /** A triggered ability waiting to be put on the stack the next time a player would receive priority (603.3). */

@@ -17,7 +17,7 @@ const colorsOfCost = (cost: ManaSymbol[]): Color[] => [...new Set(cost.flatMap((
 
 export type { Characteristics } from './evaluate';
 
-interface Applied { effect: Continuous; affected: (view: View) => GameObject[]; timestamp: number; ctx: Context; active: (view: View) => boolean }
+interface Applied { effect: Continuous; affected: (view: View) => GameObject[]; timestamp: number; ctx: Context; active: (view: View) => boolean; label: string }
 
 function printedChars(s: GameState, o: GameObject): Characteristics {
   const p = s.setup.cards[o.card];
@@ -26,6 +26,7 @@ function printedChars(s: GameState, o: GameObject): Characteristics {
     name: p.name, supertypes: [...p.supertypes], types: [...p.types], subtypes: [...p.subtypes],
     power: p.power ?? 0, toughness: p.toughness ?? 0, keywords: p.keywords.map((k) => k.toLowerCase()),
     colors: p.colors ?? colorsOfCost(p.manaCost), abilitiesRemoved: false,
+    parts: p.power !== undefined || p.toughness !== undefined ? [{ label: 'printed', power: p.power ?? 0, toughness: p.toughness ?? 0, set: true }] : [],
   };
 }
 
@@ -34,7 +35,8 @@ function effectsInForce(s: GameState, removed: Set<ObjectId>): Applied[] {
   const out: Applied[] = [];
   for (const e of s.effects) {
     const ctx: Context = { controller: e.controller, source: e.source };
-    out.push({ effect: e.effect, timestamp: e.timestamp, ctx, active: () => true,
+    const until = e.duration === 'endOfTurn' ? ' until end of turn' : e.duration === 'endOfCombat' ? ' until end of combat' : '';
+    out.push({ effect: e.effect, timestamp: e.timestamp, ctx, active: () => true, label: `${e.sourceName ?? 'an effect'}${until}`,
       affected: () => e.affected.flatMap((id) => (s.objects[id]?.zone === 'battlefield' ? [s.objects[id]!] : [])) });
   }
   for (const id of s.zones.battlefield) {
@@ -42,7 +44,7 @@ function effectsInForce(s: GameState, removed: Set<ObjectId>): Applied[] {
     const src = s.objects[id]!;
     for (const st of s.setup.cards[src.card]?.script?.statics ?? []) {
       const ctx: Context = { controller: src.controller, source: src.id };
-      out.push({ effect: st.effect, timestamp: src.timestamp, ctx,
+      out.push({ effect: st.effect, timestamp: src.timestamp, ctx, label: s.setup.cards[src.card]!.name,
         active: (view) => !st.while || holds(s, view, st.while, ctx),
         affected: (view) => objects(s, view, st.effect.affects, ctx).filter((o) => o.zone === 'battlefield') });
     }
@@ -120,21 +122,27 @@ function compute(s: GameState): Map<ObjectId, Characteristics> {
     for (const k of a.effect.addKeywords ?? []) if (!c.keywords.includes(k)) c.keywords.push(k);
   });
   // Layer 7a: characteristic-defining abilities.
-  each((e) => e.cdaPower !== undefined, (c, a) => { c.power = amount(s, view, a.effect.cdaPower!, a.ctx); });
+  each((e) => e.cdaPower !== undefined, (c, a) => {
+    c.power = amount(s, view, a.effect.cdaPower!, a.ctx);
+    c.parts.push({ label: `power from ${a.label}`, power: c.power, toughness: c.toughness, set: true });
+  });
   // Layer 7b: effects that set base power and toughness.
   each((e) => !!e.setBase || e.setBasePower !== undefined, (c, a) => {
     if (a.effect.setBase) [c.power, c.toughness] = a.effect.setBase;
     if (a.effect.setBasePower !== undefined) c.power = a.effect.setBasePower;
+    c.parts.push({ label: `set by ${a.label}`, power: c.power, toughness: c.toughness, set: true });
   });
   // Layer 7c: effects that modify power and toughness, and counters.
   each((e) => !!e.modify, (c, a) => {
-    c.power += amount(s, view, a.effect.modify![0], a.ctx);
-    c.toughness += amount(s, view, a.effect.modify![1], a.ctx);
+    const dp = amount(s, view, a.effect.modify![0], a.ctx), dt = amount(s, view, a.effect.modify![1], a.ctx);
+    c.power += dp; c.toughness += dt;
+    c.parts.push({ label: `from ${a.label}`, power: dp, toughness: dt });
   });
   for (const [id, c] of map) {
     const o = s.objects[id]!;
     const n = (o.counters['+1/+1'] ?? 0) - (o.counters['-1/-1'] ?? 0);
     c.power += n; c.toughness += n;
+    if (n) c.parts.push({ label: Math.abs(n) === 1 ? 'counter' : `${Math.abs(n)} counters`, power: n, toughness: n });
   }
   return map;
 }

@@ -7,7 +7,7 @@ import { pool } from '../cards/pool';
 import { characteristics } from '../engine/characteristics';
 import { whyNotActivate, whyNotCast, whyNotPlay } from '../engine/engine';
 import type { GameState, ObjectId, PlayerId } from '../engine/types';
-import { imageOf, nameOf } from './model';
+import { imageOf, nameOf, ptBreakdown } from './model';
 
 export type CardAction = { kind: 'cast' } | { kind: 'play' } | { kind: 'activate'; ability: number };
 
@@ -47,10 +47,9 @@ export function CardView({ s, id, actor, onAction, onClose }: {
           {abilityText && <p class="ability-text">{abilityText}</p>}
           {!ability && <p class="dim">{[...c.supertypes, ...c.types].join(' ')}{c.subtypes.length ? ` — ${c.subtypes.join(' ')}` : ''}</p>}
           {c.types.includes('Creature') && (
-            <p>
-              <b>{c.power}/{c.toughness}</b>
-              {(printed.power !== c.power || printed.toughness !== c.toughness) && <span class="dim"> (printed {printed.power}/{printed.toughness})</span>}
-              {o.damage > 0 && <span class="dmg"> · {o.damage} damage</span>}
+            <p data-testid="pt-breakdown">
+              <b>{o.zone === 'battlefield' ? ptBreakdown(s, id) : `${c.power}/${c.toughness}`}</b>
+              {o.damage > 0 && <span class="dmg"> · {o.damage} damage marked</span>}
             </p>
           )}
           {Object.entries(o.counters).filter(([, n]) => n > 0).map(([k, n]) => <p key={k} class="dim">{n} {k} counter{n > 1 ? 's' : ''}</p>)}

@@ -18,7 +18,12 @@ export interface Characteristics {
   colors: Color[];
   /** Lost all abilities (layer 6): its static, triggered and activated abilities don't work. */
   abilitiesRemoved: boolean;
+  /** Where power and toughness came from, in layer order (PRD, "Auto-tallied numbers"). */
+  parts: PtPart[];
 }
+
+/** One step of a power and toughness breakdown: "printed 2/4", "+1/+1 counter", "+1/+1 from Iroh until end of turn". */
+export interface PtPart { label: string; power: number; toughness: number; set?: boolean }
 
 export type View = (o: GameObject) => Characteristics;
 

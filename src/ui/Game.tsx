@@ -72,6 +72,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const [modes, setModes] = useState<number[]>([]);
   const [x, setX] = useState(0);
   const [hold, setHold] = useState(false);
+  const [away, setAway] = useState<string[] | null>(null);
 
   useEffect(() => {
     setAtk(new Set()); setBlocks(new Map()); setArmed(null); setChosen([]); setPicking([]);
@@ -84,7 +85,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const send = (c: Choice, opts: Parameters<typeof choose>[2] = {}) => {
     const next = choose(session, c, opts);
     if ('refused' in next) { setToast(next.refused); return false; }
-    setIntent(null); setPicking([]); setViewing(null);
+    setIntent(null); setPicking([]); setViewing(null); setAway(null);
     onChange(next);
     return true;
   };
@@ -171,7 +172,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
     onCard: (id: ObjectId) => { if (marks.selectable.has(id)) onPick(id); else setViewing(id); },
     onPlayer: (p: PlayerId) => onPick(p),
     onPile: (p: PlayerId, which: 'graveyard' | 'exile') => setPile({ p, pile: which }),
-    onHandChip: () => (off && actor === me ? onChange(look(session)) : setFolded((f) => !f)),
+    onHandChip: () => (off && actor === me ? takeLook() : setFolded((f) => !f)),
     onDrop: (id: ObjectId, at: Target | null) => {
       if (!priorityHere || !actor) return;
       const o = s.objects[id]!;
@@ -187,6 +188,18 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
     if (a.kind === 'cast') startIntent({ kind: 'cast', object: id, targets: [] });
     else startIntent({ kind: 'activate', object: id, ability: a.ability, targets: [] });
   };
+
+  // ----- Look: the acting player takes the device, and sees what happened since they last acted
+  function takeLook() {
+    if (!actor) return;
+    const g = session.game;
+    let i = g.record.choices.length - 1;
+    while (i >= 0 && (g.record.choices[i]!.auto || g.record.choices[i]!.player !== actor)) i--;
+    const since = i >= 0 ? g.states[i + 1]!.events.length : s.events.length;
+    const lines = s.events.slice(since).map((e) => e.text);
+    setAway(lines.length ? lines.slice(-6) : null);
+    onChange(look(session));
+  }
 
   // ----- undo, with confirmation when it takes back the other player's decision
   const lastManual = [...session.game.record.choices].reverse().find((c) => !c.auto);
@@ -390,7 +403,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
         <div class="foot handoff" data-testid="handoff">
           <span class="say"><b class={`who ${actor}`}>{playerName(s, actor)} to act</b>: {asking(s)}</span>
           {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-testid="bar-pass">Pass</button>}
-          <button class="btn primary" onClick={() => onChange(look(session))} data-testid="look">Look</button>
+          <button class="btn primary" onClick={takeLook} data-testid="look">Look</button>
         </div>
       );
     }
@@ -431,6 +444,12 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   return (
     <div class="game" data-facing={me}>
       <Board s={s} ahead={session.game.ahead ?? {}} bottom={me} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(orderBand ? { band: orderBand } : {})} />
+      {away && !off && (
+        <div class="away" data-testid="away" onClick={() => setAway(null)}>
+          <b>While you were away</b>
+          {away.map((t, i) => <span key={i}>{t}</span>)}
+        </div>
+      )}
       {prompt}
       {footer}
       {toast && <div class="toast" data-testid="toast" onClick={() => setToast(null)}>{toast}</div>}
