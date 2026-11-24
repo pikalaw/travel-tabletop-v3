@@ -111,3 +111,14 @@ export function replay(r: GameRecord): GameState {
   }
   return s;
 }
+
+/** Rebuilds a game, every state included, from its record (to resume after a reload). */
+export function restore(r: GameRecord): Game {
+  let g: Game = { record: { ...r, choices: [] }, states: [start(r.setup, r.seed)], redo: [] };
+  for (const [i, c] of r.choices.entries()) {
+    const next = push(g, c);
+    if ('refused' in next) throw new Error(`restore: choice ${i} was refused: ${next.refused}`);
+    g = next;
+  }
+  return g;
+}

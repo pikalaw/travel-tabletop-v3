@@ -82,7 +82,7 @@ function manaYield(s: GameState, id: ObjectId, effects: Effect[]): { makes: (Col
 }
 
 /** What a permanent makes by tapping alone: basic land types (305.6) and "{T}: Add …" abilities. */
-function tapForMana(s: GameState, id: ObjectId): { makes: (Color | 'C')[]; n: number } | null {
+export function tapForMana(s: GameState, id: ObjectId): { makes: (Color | 'C')[]; n: number } | null {
   const c = characteristics(s, obj(s, id));
   const basic = c.subtypes.map((t) => BASIC_MANA[t]).filter((m): m is Color => !!m);
   let n = basic.length ? 1 : 0;
@@ -281,6 +281,29 @@ function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0) {
     reduced = cost.map((m) => { if (m.kind !== 'generic' || off <= 0) return m; const take = Math.min(off, m.amount); off -= take; return { kind: 'generic', amount: m.amount - take }; });
   }
   return costToPay(s, p, extra?.mana ? [...reduced, ...parseCost(extra.mana)] : reduced, extra?.waterbend ?? 0);
+}
+
+/**
+ * What a cast or an activation would spend, for the confirm step: the permanents it taps (for mana,
+ * waterbend or a converter) and the floating mana it uses. Null if it can't be paid.
+ */
+export function paymentPreview(s: GameState, p: PlayerId, c: Choice): { tapped: ObjectId[]; floating: number } | null {
+  let pay: { sources: string[] } | null = null;
+  if (c.kind === 'cast') pay = s.objects[c.object] ? spellPayment(s, p, c.object, c.x ?? 0) : null;
+  else if (c.kind === 'activate') {
+    const a = s.objects[c.object] ? activatedOf(s, c.object)[c.ability] : undefined;
+    if (!a) return null;
+    pay = a.cost.mana || a.cost.waterbend ? costToPay(s, p, parseCost(a.cost.mana ?? ''), a.cost.waterbend, c.object, !!a.cost.tap) : { sources: [] };
+  }
+  if (!pay) return null;
+  const tapped = new Set<ObjectId>();
+  let floating = 0;
+  for (const id of pay.sources) {
+    const inner = id.startsWith('via:') ? id.split('>')[1]! : id;
+    if (inner.startsWith('pool:') || inner.startsWith('combat:')) floating++;
+    else tapped.add((inner.startsWith('wb:') ? inner.slice(3) : inner).split('#')[0]!);
+  }
+  return { tapped: [...tapped], floating };
 }
 
 /** Why `p` can't activate ability `index` of this permanent now, or null. With `targets`, also whether those are legal. */
