@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { attackers as attacking, proposedSplit } from '../src/engine/combat';
-import { attackCandidates, blockCandidates, legalActions } from '../src/engine/engine';
+import { attackCandidates, blockCandidates, legalActions, targetOptions, triggerTargetOptions } from '../src/engine/engine';
+import { ABILITY_CARDS } from './ability-cards';
 import { checkInvariants } from '../src/engine/invariants';
 import { randomInt } from '../src/engine/state';
 import type { Choice, GameState } from '../src/engine/types';
@@ -48,6 +49,19 @@ function simplePlayer(s: GameState): Choice {
     case 'discard': return { kind: 'discard', cards: s.zones[`${d.player}.hand`].slice(0, d.count) };
     case 'bottom': return { kind: 'bottom', cards: s.zones[`${d.player}.hand`].slice(0, d.count) };
     case 'legend': return { kind: 'legend', keep: d.objects[0]! };
+    default: return otherDecision(s);
+  }
+}
+
+/** The decisions abilities bring: take the first legal answer. */
+function otherDecision(s: GameState): Choice {
+  const d = s.decision!;
+  switch (d.kind) {
+    case 'triggerOrder': return { kind: 'order', triggers: d.triggers };
+    case 'triggerTargets': return { kind: 'targets', targets: triggerTargetOptions(s).map((o) => o.legal.slice(0, 'objects' in o.spec ? o.spec.count ?? 1 : 1)) };
+    case 'may': return { kind: 'yes' };
+    case 'discardEffect': return { kind: 'discard', cards: s.zones[`${d.player}.hand`].slice(0, d.count) };
+    default: throw new Error(`no answer for ${d.kind}`);
   }
 }
 
@@ -121,7 +135,14 @@ describe('random legal play', () => {
     const d = s.decision!;
     switch (d.kind) {
       case 'mulligan': return s.players[d.player].mulligans < 2 ? pick(legalActions(s)) : { kind: 'keep' };
-      case 'priority': case 'legend': return pick(legalActions(s));
+      case 'legend': return pick(legalActions(s));
+      case 'priority': {
+        const c = pick(legalActions(s));
+        if (c.kind !== 'cast' && c.kind !== 'activate') return c;
+        const opts = targetOptions(s, d.player, c.object, c.kind === 'activate' ? c.ability : undefined);
+        if (!opts.length) return c;
+        return { ...c, targets: opts.map((o) => [pick(o.legal)]) };
+      }
       case 'attackers': return { kind: 'attack', attackers: attackCandidates(s).filter(() => randomInt(r, 2) === 0) };
       case 'blockers': {
         const menace = new Set(attacking(s).filter((a) => characteristics(s, a).keywords.includes('menace')).map((a) => a.id));
@@ -132,6 +153,7 @@ describe('random legal play', () => {
       }
       case 'damage': return { kind: 'damage', assign: proposedSplit(s, s.objects[d.attacker]!) };
       case 'discard': case 'bottom': return { kind: d.kind, cards: s.zones[`${d.player}.hand`].slice(0, d.count) };
+      default: return otherDecision(s);
     }
   }
 
@@ -141,4 +163,13 @@ describe('random legal play', () => {
       expect(replay(g.record)).toEqual(current(g));
     }), { numRuns: 8 });
   }, 60_000);
+
+  it('with spells, abilities, triggers and replacements in the decks too', () => {
+    const d1 = deck('mountain', ['shock', 'monk', 'sparker', 'mourner', 'cadet', 'rally', 'pinger', 'burnout', 'hatchling', 'giant']);
+    const d2 = deck('forest', ['growth', 'elf', 'drummer', 'herald', 'ground', 'bear', 'martyr', 'wither', 'scholar', 'stunner']);
+    fc.assert(fc.property(fc.integer({ min: 0, max: 2 ** 31 }), (seed) => {
+      const g = playOut(newGame({ ...setup(d1, d2), cards: ABILITY_CARDS }, seed), randomPlayer, 500);
+      expect(replay(g.record)).toEqual(current(g));
+    }), { numRuns: 8 });
+  }, 120_000);
 });

@@ -3,7 +3,8 @@
  * until none apply. They happen at once, except the legend rule's choice, which is a decision.
  */
 import { characteristics, isType } from './characteristics';
-import { battlefield, event, move, zoneOf } from './state';
+import { battlefield, event } from './state';
+import { leaveBattlefield } from './zones';
 import type { GameState, PlayerId } from './types';
 import { PLAYERS } from './types';
 
@@ -24,11 +25,8 @@ export function stateBasedActions(s: GameState): boolean {
     const t = characteristics(s, o).toughness;
     return t <= 0 || (o.damage > 0 && (o.damage >= t || o.deathtouched));
   });
-  for (const o of dying) {
-    event(s, `${characteristics(s, o).name} dies`);
-    move(s, o.id, zoneOf(o.owner, 'graveyard'));
-    acted = true;
-  }
+  for (const o of dying) event(s, `${characteristics(s, o).name} dies`);
+  if (dying.length) { leaveBattlefield(s, dying.map((o) => o.id), 'graveyard', { dies: true }); acted = true; }
 
   // 704.5j: the legend rule. Its choice is a decision for the controller.
   for (const p of PLAYERS) {

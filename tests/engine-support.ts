@@ -16,7 +16,7 @@ export function basic(name: 'Plains' | 'Island' | 'Swamp' | 'Mountain' | 'Forest
 }
 
 export const CARDS: Record<CardId, Printed> = {
-  mountain: basic('Mountain'), forest: basic('Forest'), plains: basic('Plains'),
+  mountain: basic('Mountain'), forest: basic('Forest'), plains: basic('Plains'), island: basic('Island'), swamp: basic('Swamp'),
   bear: creature('Grizzly Bears', '{1}{G}', 2, 2),
   ogre: creature('Gray Ogre', '{2}{R}', 2, 2),
   giant: creature('Hill Giant', '{3}{R}', 3, 3),
@@ -69,6 +69,7 @@ export function passUntil(s: GameState, until: (s: GameState) => boolean, limit 
     if (d.kind === 'priority') s = act(s, { kind: 'pass' });
     else if (d.kind === 'attackers') s = act(s, { kind: 'attack', attackers: [] });
     else if (d.kind === 'blockers') s = act(s, { kind: 'block', blocks: [] });
+    else if (d.kind === 'discard') s = act(s, { kind: 'discard', cards: s.zones[`${d.player}.hand`].slice(0, d.count) });
     else throw new Error(`passUntil can't answer ${d.kind}`);
   }
   throw new Error('passUntil ran out of steps');

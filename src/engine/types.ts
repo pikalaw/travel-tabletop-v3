@@ -3,6 +3,7 @@
  * GameState holds the whole game; decisions and choices are plain data, so a game is its setup,
  * its seed and its list of choices.
  */
+import type { CardScript, Continuous, Duration, Effect, TargetSpec } from './abilities';
 import type { RngState } from './rng';
 
 export type PlayerId = 'p1' | 'p2';
@@ -37,6 +38,9 @@ export interface Printed {
   toughness?: number;
   keywords: string[];
   text: string;
+  /** What the card does beyond its printed values; absent for vanilla cards and basic lands. */
+  script?: CardScript;
+  token?: boolean;
 }
 
 export type Step =
@@ -76,6 +80,62 @@ export interface GameObject {
   blocked?: boolean;
   /** Combat damage it dealt in the first-strike step, so it skips the regular step unless it has double strike. */
   dealtFirstStrike?: boolean;
+  /** For a spell or ability on the stack: its chosen targets, one list per target spec. */
+  targets?: Target[][];
+  /** For an ability on the stack: which ability of which source, and what triggered it. */
+  ability?: StackAbility;
+  /** An Aura or Equipment: what it is attached to. */
+  attachedTo?: ObjectId;
+}
+
+/** A chosen target: an object or a player. */
+export type Target = ObjectId | PlayerId;
+
+export interface StackAbility {
+  /** The source object, which may have left its zone since. */
+  source: ObjectId;
+  sourceName: string;
+  kind: 'activated' | 'triggered';
+  /** Index into the source card's script. */
+  index: number;
+  /** The object the trigger's event was about, if any. */
+  eventObject?: ObjectId;
+}
+
+/** A continuous effect from a resolved spell or ability (611.2): its affected set is fixed when it begins. */
+export interface EffectInstance {
+  effect: Continuous;
+  /** The objects it affects, fixed at resolution (611.2c). */
+  affected: ObjectId[];
+  timestamp: number;
+  duration: Duration;
+  controller: PlayerId;
+  source: ObjectId;
+}
+
+/** A triggered ability waiting to be put on the stack the next time a player would receive priority (603.3). */
+export interface PendingTrigger {
+  controller: PlayerId;
+  source: ObjectId;
+  sourceName: string;
+  card: CardId;
+  index: number;
+  eventObject?: ObjectId;
+  /** Its controller has put it in order among their other triggers. */
+  ordered?: boolean;
+}
+
+/** A spell or ability partway through resolving, waiting on a choice (608.2). */
+export interface Resolving {
+  object: ObjectId;
+  /** The effect list being run and where it is. */
+  effects: Effect[];
+  pc: number;
+  controller: PlayerId;
+  source: ObjectId;
+  targets: Target[][];
+  specs: TargetSpec[];
+  eventObject?: ObjectId;
 }
 
 export interface PlayerState {
@@ -97,7 +157,11 @@ export type Decision =
   | { kind: 'blockers'; player: PlayerId }
   | { kind: 'damage'; player: PlayerId; attacker: ObjectId; blockers: ObjectId[]; power: number; trample: boolean }
   | { kind: 'discard'; player: PlayerId; count: number }
-  | { kind: 'legend'; player: PlayerId; name: string; objects: ObjectId[] };
+  | { kind: 'legend'; player: PlayerId; name: string; objects: ObjectId[] }
+  | { kind: 'triggerOrder'; player: PlayerId; triggers: number[] }
+  | { kind: 'triggerTargets'; player: PlayerId; trigger: number }
+  | { kind: 'may'; player: PlayerId; text: string }
+  | { kind: 'discardEffect'; player: PlayerId; count: number };
 
 export type Choice =
   | { kind: 'keep' }
@@ -105,7 +169,12 @@ export type Choice =
   | { kind: 'bottom'; cards: ObjectId[] }
   | { kind: 'pass' }
   | { kind: 'play'; object: ObjectId }
-  | { kind: 'cast'; object: ObjectId }
+  | { kind: 'cast'; object: ObjectId; targets?: Target[][] }
+  | { kind: 'activate'; object: ObjectId; ability: number; targets?: Target[][] }
+  | { kind: 'order'; triggers: number[] }
+  | { kind: 'targets'; targets: Target[][] }
+  | { kind: 'yes' }
+  | { kind: 'no' }
   | { kind: 'attack'; attackers: ObjectId[] }
   | { kind: 'block'; blocks: { blocker: ObjectId; attacker: ObjectId }[] }
   | { kind: 'damage'; assign: Record<ObjectId | 'player', number> }
@@ -149,6 +218,11 @@ export interface GameState {
   assignments: Record<ObjectId, Record<ObjectId | 'player', number>>;
   /** The current step's turn-based action hasn't finished (it may be waiting on a decision). */
   pendingTurnBased: boolean;
+  effects: EffectInstance[];
+  pendingTriggers: PendingTrigger[];
+  resolving: Resolving | null;
+  /** Activations this turn, by "objectId:index", for "activate only once each turn". */
+  activatedThisTurn: Record<string, number>;
   result: GameResult | null;
   /** Public events, oldest first. */
   events: GameEvent[];

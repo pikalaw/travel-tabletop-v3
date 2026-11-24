@@ -4,7 +4,10 @@
  * that is a decision only when the split can change the result.
  */
 import { characteristics, hasKeyword, isType, summoningSick } from './characteristics';
+import { dealDamage } from './effects';
 import { battlefield, event, obj } from './state';
+import { fire } from './triggers';
+import { tap } from './zones';
 import type { GameObject, GameState, ObjectId, PlayerId } from './types';
 import { other } from './types';
 
@@ -36,10 +39,11 @@ export function declareAttackers(s: GameState, attackers: ObjectId[]): void {
   for (const id of attackers) {
     const o = obj(s, id);
     o.attacking = other(s.active);
-    if (!hasKeyword(s, o, 'vigilance')) o.tapped = true;
+    if (!hasKeyword(s, o, 'vigilance')) tap(s, id);
   }
   const who = s.setup.players[s.active].name;
   event(s, attackers.length ? `${who} attacks with ${attackers.map((id) => name(s, obj(s, id))).join(', ')}` : `${who} doesn't attack`);
+  for (const id of attackers) fire(s, { kind: 'attacks', object: id }); // 508.3a
 }
 
 /** Why a block declaration is illegal, or null. Each blocker blocks one attacker. */
@@ -159,19 +163,12 @@ export function dealCombatDamage(s: GameState): void {
     const power = Math.max(0, characteristics(s, b).power);
     if (target && target.zone === 'battlefield' && power > 0) hits.push({ source: b, target: target.id, amount: power });
   }
+  const toPlayers = new Set<ObjectId>();
   for (const h of hits) {
-    const src = h.source;
-    if (h.target === 'p1' || h.target === 'p2') {
-      s.players[h.target].life -= h.amount;
-      event(s, `${name(s, src)} deals ${h.amount} damage to ${s.setup.players[h.target].name}`);
-    } else {
-      const t = obj(s, h.target);
-      t.damage += h.amount;
-      if (hasKeyword(s, src, 'deathtouch')) t.deathtouched = true;
-      event(s, `${name(s, src)} deals ${h.amount} damage to ${name(s, t)}`);
-    }
-    if (hasKeyword(s, src, 'lifelink')) s.players[src.controller].life += h.amount;
+    dealDamage(s, h.source.id, h.target, h.amount);
+    if (h.target === 'p1' || h.target === 'p2') toPlayers.add(h.source.id);
   }
+  for (const id of toPlayers) fire(s, { kind: 'dealsCombatDamageToPlayer', object: id });
   if (s.step === 'firstStrikeDamage') for (const o of inCombat(s)) if (firstStriker(s, o)) o.dealtFirstStrike = true;
   s.assignments = {};
 }
