@@ -29,6 +29,16 @@ npm run build        # type check, then build into dist/
 npm run preview      # serve dist/ at http://localhost:4173/travel-tabletop-v3/, as GitHub Pages will
 ```
 
+## Card data
+
+The card pool is committed: `src/cards/cards.json` (packets, printed values, tokens, rulings) and
+`public/cards/` (each card's large image). Both are built from the v2 deck export, and only need
+rebuilding when the export changes:
+
+```sh
+node scripts/build-cards.ts path/to/unzipped-v2-export
+```
+
 ## Check it
 
 ```sh

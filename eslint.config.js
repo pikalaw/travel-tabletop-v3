@@ -40,7 +40,7 @@ export default tseslint.config(
     rules: { 'no-restricted-globals': ['error', ...browserOnly] },
   },
   {
-    files: ['*.config.{js,ts}', 'e2e/**', 'tests/**'],
+    files: ['*.config.{js,ts}', 'e2e/**', 'tests/**', 'scripts/**'],
     languageOptions: { globals: { ...globals.node } },
   },
 );
