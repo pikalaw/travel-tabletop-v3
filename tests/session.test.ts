@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { legalActions } from '../src/engine/engine';
 import type { Choice } from '../src/engine/types';
 import { current, newGame } from '../src/host/controller';
-import { acting, choose, handingOff, look, startSession, visibleHand, type Session } from '../src/host/session';
+import { acting, choose, handingOff, look, newInHand, resignGame, startSession, visibleHand, type Session } from '../src/host/session';
 import { deck, setup } from './engine-support';
 
 function ok(x: Session | { refused: string }): Session {
@@ -68,5 +68,40 @@ describe('the device session', () => {
     expect(x.facing).toBe('p1');
     expect(x.revealed).toBe(false);
     expect(visibleHand(x)).toBeNull();
+  });
+
+  /** Passes, from the hand-off bar when the actor isn't holding the device; answers a cleanup discard. */
+  const step = (x: Session): Session => {
+    const d = current(x.game).decision!;
+    if (d.kind === 'discard') { const y = handingOff(x) ? look(x) : x; return ok(choose(y, { kind: 'discard', cards: current(y.game).zones[`${d.player}.hand`].slice(0, d.count) })); }
+    return ok(choose(x, { kind: 'pass' }, { fromBar: handingOff(x) }));
+  };
+
+  it('marks the cards new in a hand since the device last left its player, until it leaves again', () => {
+    let x = look(atMain());
+    expect(newInHand(x, 'p1').size).toBe(0); // on the play: nothing drawn since the mulligan
+    // p1 passes the turn: p2 draws, and at Look the drawn card is new
+    while (current(x.game).turn === 1) x = step(x);
+    x = look(x);
+    expect(x.facing).toBe('p2');
+    const drawn = newInHand(x, 'p2');
+    expect(drawn.size).toBe(1);
+    expect(current(x.game).zones['p2.hand']).toContain([...drawn][0]);
+    // still new while p2 acts, gone once the device has left p2 and come back
+    x = ok(choose(x, { kind: 'pass' }));
+    if (x.facing === 'p2' && x.revealed) expect(newInHand(x, 'p2').size).toBe(1);
+    while (current(x.game).turn === 2) x = step(x);
+    while (current(x.game).turn === 3) x = step(x);
+    x = look(x);
+    expect(x.facing).toBe('p2');
+    expect(newInHand(x, 'p2').size).toBe(1); // the turn-4 draw only
+  });
+
+  it('a player may resign at any time, even while the other player acts', () => {
+    const x = atMain();
+    const r = resignGame(x, 'p2');
+    if ('refused' in r) throw new Error(r.refused);
+    expect(current(r.game).result).toEqual({ winner: 'p1', reason: 'Claire resigns' });
+    expect(current(r.game).decision).toBeNull();
   });
 });

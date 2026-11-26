@@ -88,6 +88,12 @@ export function submit(g: Game, choice: Choice, opts: { hold?: boolean } = {}): 
   return 'refused' in next ? next : autoPass(next, opts.hold ? d.player : undefined);
 }
 
+/** A player resigns (104.3a), whether or not the game is waiting for them. */
+export function resign(g: Game, p: PlayerId): Game | Refusal {
+  if (!current(g).decision) return { refused: 'The game is over' };
+  return push({ ...g, redo: [] }, { choice: { kind: 'concede', player: p }, player: p, auto: false });
+}
+
 /** The player with priority passes, and announces passing ahead until end of combat or of the turn. */
 export function passAhead(g: Game, until: PassAhead['until']): Game | Refusal {
   const s = current(g);

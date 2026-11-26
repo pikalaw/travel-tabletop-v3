@@ -24,4 +24,12 @@ describe('the view model', () => {
     expect(stackItems(cast)[0]).toMatchObject({ n: 1, name: 'Lightning Strike', controller: 'p1', targets: 'Capital Guard', targetsGone: false });
     expect(targetRings(cast).get(ids.p2[0]!)).toEqual([{ n: 1, controller: 'p1' }]);
   });
+
+  it('marks a creature that came under its controller\'s control this turn as summoning sick', () => {
+    const { s, ids } = board({ p1: ['Komodo Rhino', ...lands(2)], hand1: ['Capital Guard'] });
+    const after = settle(passBoth(act(s, { kind: 'cast', object: ids.hand1[0]! })));
+    const row = battlefieldRow(after, 'p1');
+    expect(row.find((p) => p.name === 'Capital Guard')?.sick).toBe(true);
+    expect(row.find((p) => p.name === 'Komodo Rhino')?.sick).toBe(false);
+  });
 });

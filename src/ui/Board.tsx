@@ -21,6 +21,8 @@ export interface Marks {
   paying: Set<ObjectId>;
   /** Blocks being declared: blocker → attacker. */
   blocks: Map<ObjectId, ObjectId>;
+  /** Cards new in the shown hand since the device last left its player. */
+  fresh: Set<ObjectId>;
 }
 
 export interface BoardHandlers {
@@ -97,6 +99,7 @@ function CardTile({ s, perm, marks, rings, h, attackerOf }: {
     <div class={cls} data-target={perm.id} data-testid={`perm-${perm.name}`} onClick={() => h.onCard(perm.id)}>
       {perm.auras.map((a, i) => <img key={a.id} class={`aura ${a.controller}`} style={{ top: `${-10 - i * 8}px` }} src={a.image} alt="" onClick={(e) => { e.stopPropagation(); h.onCard(a.id); }} />)}
       <img src={perm.image} alt={perm.name} draggable={false} />
+      {perm.sick && !perm.attacking && <span class="sick" title="Summoning sick: it can't attack or tap yet">zZ</span>}
       {perm.attacking && <span class="atk">ATK</span>}
       {perm.blocking && <span class="atk blk">BLK</span>}
       {attackerOf && <span class="atk blk">→ {attackerOf}</span>}
@@ -197,10 +200,11 @@ function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Ma
     <div class="hand" data-testid="hand" onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}>
       {ids.map((id) => {
         const pick = marks.selectable.has(id);
-        const cls = ['card', marks.glow.has(id) ? 'can' : 'no', pick ? 'pickable' : '', marks.selected.has(id) ? 'picked' : '', ghost?.id === id ? 'lifting' : ''].filter(Boolean).join(' ');
+        const cls = ['card', marks.fresh.has(id) ? 'fresh' : '', marks.glow.has(id) ? 'can' : 'no', pick ? 'pickable' : '', marks.selected.has(id) ? 'picked' : '', ghost?.id === id ? 'lifting' : ''].filter(Boolean).join(' ');
         return (
           <div key={id} class={cls} style={{ marginLeft: `${-overlap}px` }} data-testid={`handcard-${s.setup.cards[s.objects[id]!.card]!.name}`} onPointerDown={down(id)}>
             <img src={imageOf(s, id)} alt={s.setup.cards[s.objects[id]!.card]!.name} draggable={false} />
+            {marks.fresh.has(id) && <span class="new-tab">NEW</span>}
           </div>
         );
       })}

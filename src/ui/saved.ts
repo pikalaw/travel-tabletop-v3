@@ -15,7 +15,7 @@ export interface GameSpec {
   seed: number;
 }
 
-interface Saved { build: string; spec: GameSpec; choices: LoggedChoice[]; ahead?: Game['ahead']; facing: PlayerId; revealed: boolean }
+interface Saved { build: string; spec: GameSpec; choices: LoggedChoice[]; ahead?: Game['ahead']; seen?: Session['seen']; facing: PlayerId; revealed: boolean }
 
 const KEY = 'tt3.game';
 const SETUP_KEY = 'tt3.setup';
@@ -30,7 +30,7 @@ export function begin(spec: GameSpec): Session {
 }
 
 export function save(spec: GameSpec, x: Session): void {
-  const saved: Saved = { build: BUILD_ID, spec, choices: x.game.record.choices, ...(x.game.ahead ? { ahead: x.game.ahead } : {}), facing: x.facing, revealed: false };
+  const saved: Saved = { build: BUILD_ID, spec, choices: x.game.record.choices, ...(x.game.ahead ? { ahead: x.game.ahead } : {}), ...(x.seen ? { seen: x.seen } : {}), facing: x.facing, revealed: false };
   try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch { /* storage full or blocked: the game goes on unsaved */ }
 }
 
@@ -41,7 +41,7 @@ export function load(): { spec: GameSpec; session: Session } | null {
     if (!raw) return null;
     const saved = JSON.parse(raw) as Saved;
     const game = restore({ setup: setupOf(saved.spec), seed: saved.spec.seed, choices: saved.choices });
-    return { spec: saved.spec, session: { game: { ...game, ...(saved.ahead ? { ahead: saved.ahead } : {}) }, facing: saved.facing, revealed: false } };
+    return { spec: saved.spec, session: { game: { ...game, ...(saved.ahead ? { ahead: saved.ahead } : {}) }, ...(saved.seen ? { seen: saved.seen } : {}), facing: saved.facing, revealed: false } };
   } catch {
     return null;
   }

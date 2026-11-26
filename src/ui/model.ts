@@ -4,7 +4,7 @@
  * hands and libraries appear as counts, except the one hand the session says may show.
  */
 import { pool } from '../cards/pool';
-import { characteristics } from '../engine/characteristics';
+import { characteristics, summoningSick } from '../engine/characteristics';
 import { tapForMana } from '../engine/engine';
 import { triggeredAbility } from '../engine/triggers';
 import type { Color, GameObject, GameState, ManaSymbol, ObjectId, PlayerId, Step, Target } from '../engine/types';
@@ -97,6 +97,8 @@ export interface Permanent {
   counters: [string, number][];
   attacking: boolean;
   blocking: boolean;
+  /** A creature with summoning sickness (302.6): it can't attack or use {T} abilities yet. */
+  sick: boolean;
   /** Auras attached to it, tucked behind. */
   auras: { id: ObjectId; image: string; controller: PlayerId }[];
   /** For Equipment: what it is attached to. */
@@ -119,7 +121,7 @@ export function battlefieldRow(s: GameState, p: PlayerId): Permanent[] {
       id, name: c.name, image: imageOf(s, id), tapped: o.tapped,
       ...(creature ? { pt: { power: c.power, toughness: c.toughness, up: sum > base, down: sum < base } } : {}),
       damage: o.damage, counters: Object.entries(o.counters).filter(([, n]) => n > 0),
-      attacking: o.attacking !== undefined, blocking: !!o.blocking?.length,
+      attacking: o.attacking !== undefined, blocking: !!o.blocking?.length, sick: creature && summoningSick(s, o),
       auras: s.zones.battlefield.filter((a) => s.objects[a]!.attachedTo === id && characteristics(s, s.objects[a]!).subtypes.includes('Aura'))
         .map((a) => ({ id: a, image: imageOf(s, a), controller: s.objects[a]!.controller })),
       ...(o.attachedTo && s.objects[o.attachedTo] ? { attachedTo: nameOf(s, o.attachedTo) } : {}),

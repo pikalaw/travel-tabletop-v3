@@ -11,14 +11,14 @@ import { triggeredAbility } from '../engine/triggers';
 import type { Choice, Color, GameState, ObjectId, PlayerId, Target } from '../engine/types';
 import { other } from '../engine/types';
 import { canRedo, canUndo, current } from '../host/controller';
-import { acting, choose, handingOff, look, redoLast, undoLast, visibleHand, type Session } from '../host/session';
+import { acting, choose, handingOff, look, newInHand, redoLast, resignGame, undoLast, visibleHand, type Session } from '../host/session';
 import { Board, type Marks } from './Board';
 import { CardView, type CardAction } from './CardView';
 import { nextNeed, toChoice, withDrop, type Intent, type Need } from './flow';
 import { cardImage, formatCost, nameOf, passMeaning, playerName } from './model';
 import { CardList, Sheet } from './Sheets';
 
-const EMPTY: Marks = { selectable: new Set(), selected: new Set(), glow: new Set(), paying: new Set(), blocks: new Map() };
+const EMPTY: Marks = { selectable: new Set(), selected: new Set(), glow: new Set(), paying: new Set(), blocks: new Map(), fresh: new Set() };
 
 /** Words for what the acting player must decide, for the hand-off bar. */
 function asking(s: GameState): string {
@@ -59,7 +59,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const [picking, setPicking] = useState<Target[]>([]);
   const [viewing, setViewing] = useState<ObjectId | null>(null);
   const [pile, setPile] = useState<{ p: PlayerId; pile: 'graveyard' | 'exile' } | null>(null);
-  const [menu, setMenu] = useState<'menu' | 'log' | 'undo' | 'ahead' | null>(null);
+  const [menu, setMenu] = useState<'menu' | 'log' | 'undo' | 'ahead' | 'resign' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [folded, setFolded] = useState(false);
   // Answers being built for the engine's decision; reset whenever the decision changes.
@@ -115,7 +115,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   }, [s.seq, priorityHere]);
 
   // ----- what the board marks
-  let marks: Marks = { ...EMPTY, glow };
+  let marks: Marks = { ...EMPTY, glow, fresh: shown ? newInHand(session, me) : new Set() };
   if (!off && need?.kind === 'target') marks = { ...marks, selectable: new Set(need.legal), selected: new Set(picking) };
   else if (!off && need?.kind === 'tap') marks = { ...marks, selectable: new Set(need.options), selected: new Set(picking) };
   else if (!off && preview) marks = { ...marks, paying: new Set(preview.tapped) };
@@ -465,6 +465,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
             <button class="btn" onClick={() => setMenu('log')} data-testid="open-log">Log</button>
             <button class="btn" disabled={!canRedo(session.game)} onClick={() => { setMenu(null); onChange(redoLast(session)); }}>Redo</button>
             <button class="btn" onClick={() => { setFolded(true); setMenu(null); }}>Hide my hand</button>
+            {d && <button class="btn" onClick={() => setMenu('resign')} data-testid="resign">Resign</button>}
             <button class="btn" onClick={onExit} data-testid="quit">Leave game (it stays saved)</button>
           </div>
         </Sheet>
@@ -475,6 +476,19 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
           <div class="menu">
             <button class="btn" onClick={() => { setMenu(null); send({ kind: 'pass' }, { ahead: 'combat' }); }} data-testid="pass-combat">Pass this combat</button>
             <button class="btn" onClick={() => { setMenu(null); send({ kind: 'pass' }, { ahead: 'turn' }); }} data-testid="pass-turn">Pass until end of turn</button>
+          </div>
+        </Sheet>
+      )}
+      {menu === 'resign' && (
+        <Sheet title="Resign" onClose={() => setMenu(null)}>
+          <p>Resign as <b>{playerName(s, me)}</b>? {playerName(s, other(me))} wins the game.</p>
+          <div class="row">
+            <button class="btn" onClick={() => setMenu(null)}>Cancel</button>
+            <button class="btn primary" data-testid="confirm-resign" onClick={() => {
+              const next = resignGame(session, me);
+              setMenu(null);
+              if ('refused' in next) setToast(next.refused); else onChange(next);
+            }}>Resign</button>
           </div>
         </Sheet>
       )}

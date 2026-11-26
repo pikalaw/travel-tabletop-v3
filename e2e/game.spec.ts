@@ -103,6 +103,18 @@ test('a land is played and a game resumes after a reload, blinded', async ({ pag
   await expect(page.getByTestId('lands-p1')).toContainText('Mountain');
 });
 
+test('a player resigns from the menu, and the other wins', async ({ page }) => {
+  await newGame(page, 7, ['bb-firebending', 'bb-attacking', 'bb-zuko-tutorial'], ['bb-waterbending', 'bb-allies', 'bb-spells']);
+  await page.getByTestId('look').click(); await page.getByTestId('keep').click();
+  await page.getByTestId('look').click(); await page.getByTestId('keep').click();
+  await page.getByTestId('look').click();
+  await page.getByTestId('menu').click();
+  await page.getByTestId('resign').click();
+  await page.getByTestId('confirm-resign').click();
+  await expect(page.locator('.foot')).toContainText('Claire wins');
+  await expect(page.locator('.foot')).toContainText('Lawrence resigns');
+});
+
 for (const seed of [11, 12]) {
   test(`random play through the screen never shows a hand to the wrong player (seed ${seed})`, async ({ page }) => {
     test.setTimeout(240_000);

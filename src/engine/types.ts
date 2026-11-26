@@ -199,6 +199,8 @@ export type Decision =
 
 export type Choice =
   | { kind: 'keep' }
+  /** A player concedes (104.3a): at any time, whoever the engine is waiting for. */
+  | { kind: 'concede'; player: PlayerId }
   | { kind: 'mulligan' }
   | { kind: 'bottom'; cards: ObjectId[] }
   | { kind: 'pass' }

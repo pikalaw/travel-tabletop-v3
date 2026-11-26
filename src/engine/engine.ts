@@ -405,6 +405,13 @@ export function answer(state: GameState, choice: Choice): GameState | Refusal {
   // The setup (decks and card data) never changes, so every state shares it; the rest is copied.
   const { setup, ...rest } = state;
   const s: GameState = { ...structuredClone(rest), setup };
+  if (choice.kind === 'concede') {
+    s.decision = null;
+    s.result = { winner: other(choice.player), reason: `${playerName(s, choice.player)} resigns` };
+    event(s, s.result.reason);
+    s.seq++;
+    return s;
+  }
   s.decision = null;
   const refusal = apply(s, d, choice);
   if (refusal) return { refused: refusal };
