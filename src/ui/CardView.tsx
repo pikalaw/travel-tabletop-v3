@@ -3,6 +3,7 @@
  * what the player holding the device can do with it now: Cast or Play, each ability, greyed with
  * the reason when it isn't legal. Rulings below.
  */
+import { useRef, useState } from 'preact/hooks';
 import { pool } from '../cards/pool';
 import { characteristics } from '../engine/characteristics';
 import { whyNotActivate, whyNotCast, whyNotPlay } from '../engine/engine';
@@ -11,12 +12,21 @@ import { imageOf, nameOf, ptBreakdown } from './model';
 
 export type CardAction = { kind: 'cast' } | { kind: 'play' } | { kind: 'activate'; ability: number };
 
-export function CardView({ s, id, actor, onAction, onClose }: {
+/** How far a finger moves before a swipe counts, and under which a press is a tap (as in v2). */
+const SWIPE_PX = 50;
+
+export function CardView({ s, id, actor, siblings, onAction, onNavigate, onClose }: {
   s: GameState; id: ObjectId;
   /** The player who may act from this view now (holding the device with priority), or null. */
   actor: PlayerId | null;
-  onAction: (a: CardAction) => void; onClose: () => void;
+  /** The cards a sideways swipe steps through, this one among them. */
+  siblings: ObjectId[];
+  onAction: (a: CardAction) => void; onNavigate: (id: ObjectId) => void; onClose: () => void;
 }) {
+  // Swipes on the picture (v2's full view): up casts or plays it, down closes, sideways steps to
+  // the previous or next card. The text below scrolls as usual.
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const [shift, setShift] = useState<{ x: number; y: number } | null>(null);
   const o = s.objects[id];
   if (!o) return null;
   const card = pool.cards[o.card];
@@ -41,7 +51,28 @@ export function CardView({ s, id, actor, onAction, onClose }: {
   return (
     <div class="sheet full" data-testid="card-view" onClick={onClose}>
       <div class="full-inner" onClick={(e) => e.stopPropagation()}>
-        <img class="full-img" src={imageOf(s, id)} alt={c.name} />
+        <img class="full-img" src={imageOf(s, id)} alt={c.name} draggable={false} data-testid="full-img"
+          style={shift ? { transform: `translate(${shift.x}px, ${shift.y}px)`, transition: 'none' } : undefined}
+          onPointerDown={(e) => { start.current = { x: e.clientX, y: e.clientY }; (e.currentTarget as Element).setPointerCapture?.(e.pointerId); }}
+          onPointerMove={(e) => { const s0 = start.current; if (s0) setShift({ x: e.clientX - s0.x, y: e.clientY - s0.y }); }}
+          onPointerCancel={() => { start.current = null; setShift(null); }}
+          onPointerUp={(e) => {
+            const s0 = start.current;
+            start.current = null;
+            setShift(null);
+            if (!s0) return;
+            const dx = e.clientX - s0.x, dy = e.clientY - s0.y;
+            if (-dy > SWIPE_PX && -dy > 1.5 * Math.abs(dx)) {
+              const main = actions.find((a) => a.act.kind !== 'activate');
+              if (main && !main.why) onAction(main.act);
+            } else if (dy > SWIPE_PX && dy > 1.5 * Math.abs(dx)) onClose();
+            else if (Math.abs(dx) >= SWIPE_PX && Math.abs(dx) >= Math.abs(dy)) {
+              const i = siblings.indexOf(id);
+              const next = siblings[i + (dx < 0 ? 1 : -1)];
+              if (i >= 0 && next) onNavigate(next);
+            }
+          }} />
+        {siblings.length > 1 && <p class="dim nav-hint">{siblings.indexOf(id) + 1} of {siblings.length} · swipe sideways for the {siblings.indexOf(id) > 0 ? 'previous or ' : ''}next</p>}
         <div class="full-text">
           <h2>{ability ? `${ability.sourceName}'s ability` : c.name}</h2>
           {abilityText && <p class="ability-text">{abilityText}</p>}

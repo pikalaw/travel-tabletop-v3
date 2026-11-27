@@ -15,7 +15,7 @@ import { acting, choose, handingOff, look, newInHand, redoLast, resignGame, undo
 import { Board, type Marks } from './Board';
 import { CardView, type CardAction } from './CardView';
 import { nextNeed, toChoice, withDrop, type Intent, type Need } from './flow';
-import { cardImage, formatCost, nameOf, passMeaning, playerName } from './model';
+import { cardImage, formatCost, nameOf, passMeaning, playerName, siblings } from './model';
 import { CardList, Sheet } from './Sheets';
 
 const EMPTY: Marks = { selectable: new Set(), selected: new Set(), glow: new Set(), paying: new Set(), blocks: new Map(), fresh: new Set() };
@@ -402,6 +402,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       return (
         <div class="foot handoff" data-testid="handoff">
           <span class="say"><b class={`who ${actor}`}>{playerName(s, actor)} to act</b>: {asking(s)}</span>
+          {d.kind === 'priority' && <button class="btn" onClick={() => setMenu('ahead')} data-testid="bar-pass-ahead">»</button>}
           {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-testid="bar-pass">Pass</button>}
           <button class="btn primary" onClick={takeLook} data-testid="look">Look</button>
         </div>
@@ -453,7 +454,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       {prompt}
       {footer}
       {toast && <div class="toast" data-testid="toast" onClick={() => setToast(null)}>{toast}</div>}
-      {viewing && s.objects[viewing] && <CardView s={s} id={viewing} actor={viewActor} onAction={(a) => onAction(viewing, a)} onClose={() => setViewing(null)} />}
+      {viewing && s.objects[viewing] && <CardView s={s} id={viewing} actor={viewActor} siblings={siblings(s, viewing, shown ? me : null)} onAction={(a) => onAction(viewing, a)} onNavigate={setViewing} onClose={() => setViewing(null)} />}
       {pile && (
         <Sheet title={`${playerName(s, pile.p)}'s ${pile.pile}`} onClose={() => setPile(null)}>
           {pileIds.length ? <CardList s={s} ids={[...pileIds].reverse()} selectable={new Set()} selected={new Set()} onPick={() => undefined} onOpen={(id) => { setPile(null); setViewing(id); }} /> : <p class="dim">Empty.</p>}
@@ -471,11 +472,11 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
         </Sheet>
       )}
       {menu === 'ahead' && (
-        <Sheet title="Pass ahead" onClose={() => setMenu(null)}>
-          <p class="dim">Both players will see it on your stats bar, as saying "no responses" would at a table.</p>
+        <Sheet title={`${actor ? playerName(s, actor) : ''}: pass ahead`} onClose={() => setMenu(null)}>
+          <p class="dim">It ends early if the other player casts or activates something, or one of their abilities triggers. Both players will see it on your stats bar, as saying "no responses" would at a table.</p>
           <div class="menu">
-            <button class="btn" onClick={() => { setMenu(null); send({ kind: 'pass' }, { ahead: 'combat' }); }} data-testid="pass-combat">Pass this combat</button>
-            <button class="btn" onClick={() => { setMenu(null); send({ kind: 'pass' }, { ahead: 'turn' }); }} data-testid="pass-turn">Pass until end of turn</button>
+            <button class="btn" onClick={() => { setMenu(null); send({ kind: 'pass' }, { ahead: 'combat', fromBar: off }); }} data-testid="pass-combat">Pass this combat</button>
+            <button class="btn" onClick={() => { setMenu(null); send({ kind: 'pass' }, { ahead: 'turn', fromBar: off }); }} data-testid="pass-turn">Pass until end of turn</button>
           </div>
         </Sheet>
       )}

@@ -210,3 +210,24 @@ export function ptBreakdown(s: GameState, id: ObjectId): string {
   const parts = c.parts.map((p) => (p.set ? `${p.power}/${p.toughness} ${p.label}` : `${sign(p.power)}/${sign(p.toughness)} ${p.label}`));
   return `${c.power}/${c.toughness} = ${parts.join(', ')}`;
 }
+
+/**
+ * The cards a full view steps through with a sideways swipe, in the order the board shows them:
+ * the row or strip a permanent sits in, the stack top first, a hand, a pile newest first. Only
+ * cards the viewer already sees are listed: a hand's cards only when that hand is shown.
+ */
+export function siblings(s: GameState, id: ObjectId, shownHand: PlayerId | null): ObjectId[] {
+  const o = s.objects[id];
+  if (!o) return [];
+  if (o.zone === 'stack') return stackItems(s).map((i) => i.id);
+  if (o.zone === 'battlefield') {
+    const row = battlefieldRow(s, o.controller);
+    if (row.some((p) => p.id === id)) return row.map((p) => p.id);
+    const lands = landsStrip(s, o.controller).chips.flatMap((c) => c.ids);
+    if (lands.includes(id)) return lands;
+    return [id]; // an Aura tucked behind what it enchants
+  }
+  const [p, zone] = o.zone.split('.') as [PlayerId, string];
+  if (zone === 'hand') return p === shownHand ? [...s.zones[o.zone]] : [];
+  return [...s.zones[o.zone]].reverse();
+}

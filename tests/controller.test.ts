@@ -61,13 +61,20 @@ describe('the controller', () => {
     expect(g.ahead?.p1).toBeUndefined();
   });
 
-  it('passes for a player whose only legal move is Pass, wherever the window', () => {
-    // p1 plays nothing and passes; p2 has nothing castable, so p1's end-step window is passed for them.
-    const g = ok(submit(atMain(), { kind: 'pass' }));
-    expect(current(g).step).toBe('main2'); // p1 still has a land to play
-    const next = ok(submit(g, { kind: 'pass' }));
-    expect(current(next).turn).toBe(2);
-    expect(current(next).decision).toEqual({ kind: 'priority', player: 'p2' }); // p2's land drop
-    expect(current(next).step).toBe('main1');
+  it('keeps the other player\'s windows, even when they can do nothing there', () => {
+    // p2 has nothing to cast, but the fixed window in p1's end step still opens: it says nothing about p2's hand.
+    const g = ok(submit(ok(submit(atMain(), { kind: 'pass' })), { kind: 'pass' }));
+    expect(current(g).step).toBe('end');
+    expect(current(g).decision).toEqual({ kind: 'priority', player: 'p2' });
+  });
+
+  it('passes your own main phase when Pass is your only legal move', () => {
+    // p1 plays the Mountain and casts the goblin; with nothing left to do, main 1 and main 2 pass by themselves.
+    let g = atMain();
+    g = ok(submit(g, legalActions(current(g)).find((c) => c.kind === 'play')!));
+    g = ok(submit(g, legalActions(current(g)).find((c) => c.kind === 'cast')!));
+    g = ok(submit(g, { kind: 'pass' })); // p2's window over the goblin
+    expect(current(g).step).toBe('end');
+    expect(current(g).decision).toEqual({ kind: 'priority', player: 'p2' });
   });
 });

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { act } from './engine-support';
 import { board, lands, passBoth, settle } from './cards/harness';
-import { battlefieldRow, landsStrip, ptBreakdown, stackItems, targetRings } from '../src/ui/model';
+import { battlefieldRow, landsStrip, ptBreakdown, siblings, stackItems, targetRings } from '../src/ui/model';
 
 describe('the view model', () => {
   it('breaks power and toughness down, and draws an Aura with what it enchants', () => {
@@ -31,5 +31,13 @@ describe('the view model', () => {
     const row = battlefieldRow(after, 'p1');
     expect(row.find((p) => p.name === 'Capital Guard')?.sick).toBe(true);
     expect(row.find((p) => p.name === 'Komodo Rhino')?.sick).toBe(false);
+  });
+
+  it('steps a full view through the row, strip or hand a card sits in, and never into a hidden hand', () => {
+    const { s, ids } = board({ p1: ['Komodo Rhino', 'Capital Guard', ...lands(2)], hand1: ['Lightning Strike', 'Capital Guard'] });
+    expect(siblings(s, ids.p1[1]!, 'p1')).toEqual([ids.p1[0], ids.p1[1]]);
+    expect(siblings(s, ids.p1[2]!, 'p1')).toEqual([ids.p1[2], ids.p1[3]]);
+    expect(siblings(s, ids.hand1[0]!, 'p1').slice(-2)).toEqual(ids.hand1);
+    expect(siblings(s, ids.hand1[0]!, null)).toEqual([]);
   });
 });
