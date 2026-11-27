@@ -13,6 +13,7 @@ import type { Choice, GameState } from '../src/engine/types';
 import { canUndo, current, newGame, redo, replay, stopsHere, submit, undo, type Game } from '../src/host/controller';
 import { characteristics } from '../src/engine/characteristics';
 import { deck, setup } from './engine-support';
+import { withShock } from './game-support';
 
 function ok(g: Game | { refused: string }): Game {
   if ('refused' in g) throw new Error(g.refused);
@@ -86,8 +87,8 @@ describe('the M1 gate', () => {
 });
 
 describe('the controller', () => {
-  it('stops only at the fixed windows', () => {
-    let g = ok(submit(ok(submit(newGame(setup(), 3), { kind: 'keep' })), { kind: 'keep' }));
+  it('stops only at the fixed windows, for a player who can do something there', () => {
+    let g = withShock(ok(submit(ok(submit(newGame(setup(), 3), { kind: 'keep' })), { kind: 'keep' })))[0];
     // The upkeep and draw steps pass by themselves: the first stop is p1's main phase.
     expect(current(g).step).toBe('main1');
     expect(current(g).decision).toEqual({ kind: 'priority', player: 'p1' });

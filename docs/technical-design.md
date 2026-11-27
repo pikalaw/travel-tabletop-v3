@@ -183,7 +183,7 @@ The game controller tracks who is holding the device (`viewer`: a player, or `no
 
 **Pass without looking.** A priority decision can be answered "pass" from the hand-off bar, without unblinding. A decision that is not a priority pass (blocks, a discard, a target) needs Look.
 
-**Stops can't leak, by construction.** The windows are one fixed table, the same for both players and shown at setup, so a window opening reveals nothing. The auto-pass policy is a function `stopsHere(view, player, stops)`. Its `view` is `publicView(state)`: the state with hidden zones reduced to counts. With no access to hands, a policy can't stop or skip based on them, and the type checker enforces that.
+**Stops, and the one that reads the hand.** The windows are one fixed table, the same for both players and shown at setup. The auto-pass policy is `stopsHere(state, player)`, which reads only public facts: the step, the stack, whose turn it is. On top of it, the controller passes any window where the player's only legal move is Pass (`legalActions` offers nothing else). That reads the hand, so a window that doesn't open tells the other player that nothing could be done there; the players chose that trade for fewer taps (PRD, "Nothing to do"). A player passing ahead is passed for until the announcement runs out, or until the other player puts something on the stack.
 
 **Public wording.** Log lines and the hand-off bar describe events as both players may see them (v2's describe rules): a card's name only if both players could see it, otherwise "a card". The full log, with hidden names, is only for export after the game.
 

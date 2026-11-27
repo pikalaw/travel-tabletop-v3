@@ -62,13 +62,12 @@ function push(g: Game, c: LoggedChoice): Game | Refusal {
 }
 
 /**
- * Your own main phase with nothing to do (PRD, "Players and the shared device"): with an empty
- * stack and Pass your only legal move (no land to play, nothing to cast or activate), the stop is
- * passed for you. It reads your hand, unlike the fixed windows, but reveals nothing: the device is
- * yours, and the other player learns only what your tapping Pass would have told them.
+ * Nothing to do (PRD, "Players and the shared device"): when Pass is the player's only legal move
+ * (no land to play, nothing to cast, no ability to activate), the window is passed for them,
+ * wherever it is. Unlike the fixed windows this reads the hand, so a window that doesn't open tells
+ * the other player that nothing could be done there; the players chose that trade for fewer taps.
  */
-function nothingToDo(s: GameState, p: PlayerId): boolean {
-  if ((s.step !== 'main1' && s.step !== 'main2') || s.active !== p || s.zones.stack.length) return false;
+function nothingToDo(s: GameState): boolean {
   return legalActions(s).every((c) => c.kind === 'pass');
 }
 
@@ -102,7 +101,7 @@ function autoPass(g: Game, hold?: PlayerId): Game {
     if (!d || d.kind !== 'priority') return g;
     if (hold === d.player) return g;
     g = endIfAnswered(g, d.player);
-    if (stopsHere(s, d.player) && !stillPassing(s, g.ahead?.[d.player]) && !nothingToDo(s, d.player)) return g;
+    if (stopsHere(s, d.player) && !stillPassing(s, g.ahead?.[d.player]) && !nothingToDo(s)) return g;
     const next = push(g, { choice: { kind: 'pass' }, player: d.player, auto: true });
     if ('refused' in next) throw new Error(`the engine refused an automatic pass: ${next.refused}`);
     g = next;

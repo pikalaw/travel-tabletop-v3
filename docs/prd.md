@@ -52,7 +52,7 @@ At every moment the engine knows which player must act (the player with priority
 
 1. **A pass costs one tap.** Passing needs no hidden information, so the phone can stay flat on the table: the other player taps Pass on the hand-off bar, and no hand is shown. The phone really changes hands only when someone taps Look to act, so the cost falls on the player who's acting, as in paper.
 2. **Windows open only where instants matter.** The pool's 55 instants and 5 flash cards are nearly all combat tricks, removal and three counterspells; almost nothing wants upkeep or the draw step. The engine passes for both players everywhere else.
-3. **The windows are fixed, public and the same for both players.** No per-player settings: if one player's stops were private, a window opening would hint at what they hold. With fixed stops, a window says nothing about anyone's hand. Whether to stop never depends on hidden cards; skipping a window because a hand has no instants would tell the opponent exactly that.
+3. **The windows are fixed, public and the same for both players.** No per-player settings: if one player's stops were private, a window opening would hint at what they hold. The one exception is below, under Nothing to do.
 4. **Your own priority after casting is passed for you.** After you cast, the rules give you priority again; the app passes it, unless you tick "Hold priority" while casting, to respond to your own spell.
 
 The windows (a step with neither player's window passes by itself):
@@ -69,7 +69,7 @@ A typical turn then has the blocking decision and about three one-tap windows, p
 
 **Passing ahead, out loud.** At any window a player may choose "Pass this combat" or "Pass until end of turn". Since that is a statement about one's own hand, the app shows it to both players ("Claire passes until end of turn"), as saying "no responses" would at a table. It's chosen, not inferred. It ends early when the other player puts a spell, ability or trigger on the stack, since what was said didn't cover it: the player gets the window to respond, and play goes on with the usual stops. Their own spells and triggers don't end it.
 
-**Nothing to do in your own main phase.** When Pass is the only legal move in your own main phase (no land to play, nothing to cast, no ability to activate), the app passes it for you. This is the one stop that reads a hand, and it reveals nothing: the device is yours, and the other player learns only what tapping Pass would have told them.
+**Nothing to do.** At any window, when Pass is the player's only legal move (no land to play, nothing to cast, no ability to activate), the app passes it for them. This reads the hand, unlike the fixed windows: a window that doesn't open tells the other player that nothing could be done there, as digital Magic clients do too. The players chose that trade for fewer taps.
 
 **Choices that belong to the other player** always hand off, whether or not they need hidden cards: blocking, discarding, choosing a mode for their own trigger, ordering their triggers, and the mulligan. Private looks (search, scry, "look at the top N") happen only on the owner's screen; the other player sees that a look happened and how many cards.
 

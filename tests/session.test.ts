@@ -5,16 +5,18 @@ import type { Choice } from '../src/engine/types';
 import { current, newGame } from '../src/host/controller';
 import { acting, choose, handingOff, look, newInHand, resignGame, startSession, visibleHand, type Session } from '../src/host/session';
 import { deck, setup } from './engine-support';
+import { withShock } from './game-support';
 
 function ok(x: Session | { refused: string }): Session {
   if ('refused' in x) throw new Error(x.refused);
   return x;
 }
 
-/** Both keep, then p1 is in their first main phase with a Mountain and a goblin in hand. */
+/** Both keep, then p1 is in their first main phase with a Mountain and a goblin in hand; p2 holds a Shock and a Mountain. */
 function atMain(): Session {
   for (let seed = 1; ; seed++) {
     let x = startSession(newGame(setup(deck('mountain', ['goblin'], 40), deck('forest', ['bear'], 40)), seed));
+    x = { ...x, game: withShock(x.game)[0] }; // p2 can respond, so p2's windows open
     x = ok(choose(look(x), { kind: 'keep' }));
     x = ok(choose(look(x), { kind: 'keep' }));
     const acts = legalActions(current(x.game));
@@ -73,6 +75,7 @@ describe('the device session', () => {
     x = ok(choose(x, legalActions(current(x.game)).find((c) => c.kind === 'play')!));
     x = ok(choose(x, legalActions(current(x.game)).find((c) => c.kind === 'cast')!));
     while (current(x.game).decision?.kind !== 'attackers' || current(x.game).turn < 3) x = step(x);
+    x = { ...x, game: withShock(x.game, 'p1')[0] }; // p1 too can respond, so p1's combat windows open
     x = look(x);
     x = ok(choose(x, { kind: 'attack', attackers: attackCandidates(current(x.game)) }));
     // p2's window after attackers: a hand-off; p2 looks and passes (p2 has nothing to block with)
