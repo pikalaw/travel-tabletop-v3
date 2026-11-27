@@ -45,6 +45,9 @@ function asking(s: GameState): string {
   }
 }
 
+/** Words for a decision Undo would take back: "Undo Claire's block". */
+const UNDO_WORDS: Partial<Record<Choice['kind'], string>> = { cast: 'cast', play: 'land', activate: 'ability', attack: 'attack', block: 'block', pass: 'pass', keep: 'keep', mulligan: 'mulligan', targets: 'targets', order: 'order', discard: 'discard' };
+
 /** How long each step of playback shows. */
 const BEAT_MS = 1100;
 
@@ -72,6 +75,9 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const off = handingOff(session);
   const me = session.facing;
   const shown = visibleHand(session) === me;
+  // The board faces whoever must act: during a hand-off it turns to them at once (blinded, no hand
+  // showing), so the bottom half, the footer and the acting player are always the same colour.
+  const bottom = off && actor ? actor : me;
 
   const [intent, setIntent] = useState<Intent | null>(null);
   const [picking, setPicking] = useState<Target[]>([]);
@@ -250,6 +256,10 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const lastManual = [...session.game.record.choices].reverse().find((c) => !c.auto);
   const doUndo = () => { setIntent(null); setMenu(null); onChange(undoLast(session)); };
   const askUndo = () => { if (lastManual && lastManual.player !== me) setMenu('undo'); else doUndo(); };
+  // Undo that would take back the other player's decision says so, in their colour.
+  const undoOther = lastManual && d && lastManual.player !== d.player ? lastManual : null;
+  const undoLabel = undoOther ? `Undo ${playerName(s, undoOther.player)}'s ${UNDO_WORDS[undoOther.choice.kind] ?? 'move'}` : 'Undo';
+  const undoClass = `btn ${undoOther ? `undo-other ${undoOther.player}` : ''}`;
 
   // ----- the prompt panel and the footer
   const prompt = renderPrompt();
@@ -445,9 +455,9 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
     }
     if (off && actor) {
       return (
-        <div class="foot handoff" data-testid="handoff">
+        <div class={`foot handoff ${actor}`} data-testid="handoff">
           <span class="say"><b class={`who ${actor}`}>{playerName(s, actor)} to act</b>: {asking(s)}</span>
-          {canUndo(session.game) && <button class="btn" onClick={askUndo} data-tip="Take back the last decision. Taking back the other player's asks first." data-testid="bar-undo">Undo</button>}
+          {canUndo(session.game) && <button class={undoClass} onClick={askUndo} data-tip="Take back the last decision. Taking back the other player's asks first." data-testid="bar-undo">{undoLabel}</button>}
           {d.kind === 'priority' && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="bar-pass-ahead">»</button>}
           {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-tip="Pass without showing your hand. Nothing flips." data-testid="bar-pass">Pass</button>}
           <button class="btn primary" onClick={takeLook} data-tip="Take the phone and show your hand, to act." data-testid="look">Look</button>
@@ -455,9 +465,9 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       );
     }
     return (
-      <div class="foot">
+      <div class={`foot ${d.player}`}>
         <span class="say">{d.kind === 'priority' && !intent ? <>Pass: <b>{passMeaning(s)}</b></> : <b>{playerName(s, d.player)}</b>}</span>
-        <button class="btn" disabled={!canUndo(session.game)} onClick={askUndo} data-tip="Take back the last decision, with the automatic passes after it." data-testid="undo">Undo</button>
+        <button class={undoClass} disabled={!canUndo(session.game)} onClick={askUndo} data-tip="Take back the last decision, with the automatic passes after it." data-testid="undo">{undoLabel}</button>
         <button class="btn" onClick={() => setMenu('menu')} data-tip="Log, redo, hide your hand, resign, or leave the game." data-testid="menu">☰</button>
         {d.kind === 'priority' && !intent && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="pass-ahead">»</button>}
         {d.kind === 'priority' && !intent && <button class="btn primary" onClick={() => send({ kind: 'pass' })} data-tip={`Pass priority: ${passMeaning(s)}.`} data-testid="pass">Pass</button>}
@@ -489,8 +499,8 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const pileIds = pile ? s.zones[`${pile.p}.${pile.pile}`] : [];
 
   return (
-    <div class="game" data-facing={me}>
-      <Board s={beat ? states[beat.at]! : s} ahead={session.game.ahead ?? {}} bottom={me} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(beat ? { band: <BeatBanner s={s} beat={beat} n={play!.k + 1} of={play!.beats.length} /> } : orderBand ? { band: orderBand } : {})} />
+    <div class="game" data-facing={bottom}>
+      <Board s={beat ? states[beat.at]! : s} ahead={session.game.ahead ?? {}} bottom={bottom} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(beat ? { band: <BeatBanner s={s} beat={beat} n={play!.k + 1} of={play!.beats.length} /> } : orderBand ? { band: orderBand } : {})} />
       {beat && <div class="skip" data-testid="playback" onClick={() => setPlay(null)}><span>Tap to skip</span></div>}
       {away && !off && (
         <div class="away" data-testid="away" onClick={() => setAway(null)}>

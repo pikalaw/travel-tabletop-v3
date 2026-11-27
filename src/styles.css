@@ -58,18 +58,18 @@ button { font: inherit; color: inherit; }
 
 /* ----- the game: board, prompt panel, footer */
 .game { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; position: relative; }
-.board { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: flip .25s ease-out; }
-@keyframes flip { from { opacity: .2; transform: rotateX(25deg); } to { opacity: 1; transform: none; } }
+.board { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: flip .15s ease-out; }
+/* The board turns often (at every hand-off and back): a quick crossfade, not a turn-over. */
+@keyframes flip { from { opacity: .35; } to { opacity: 1; } }
 .half { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.half.opp { background: linear-gradient(to bottom, rgba(60, 110, 220, .36), rgba(60, 110, 220, .10)); }
-.half.me { background: linear-gradient(to bottom, rgba(214, 64, 52, .10), rgba(214, 64, 52, .36)); }
+.half.opp { background: linear-gradient(to bottom, rgba(var(--tint), .36), rgba(var(--tint), .10)); }
+.half.me { background: linear-gradient(to bottom, rgba(var(--tint), .10), rgba(var(--tint), .36)); }
 
-/* role colours: the bottom player is "hot", the other "cool" */
-.facing-p1 .p1, .facing-p2 .p2 { --role: var(--hot); }
-.facing-p1 .p2, .facing-p2 .p1 { --role: var(--cool); }
+/* Player colours, for the whole game: Player 1 red, Player 2 blue. Everything a player owns or does
+   carries theirs: their half of the board, name, rings, arrows, and the footer when they must act. */
+.p1 { --role: var(--hot); --tint: 214, 64, 52; }
+.p2 { --role: var(--cool); --tint: 60, 110, 220; }
 .name, .turn, .emptyturn, .by, .who { color: var(--role, var(--ink)); font-weight: 700; }
-.game[data-facing=p1] .who.p1, .game[data-facing=p2] .who.p2 { color: var(--hot); }
-.game[data-facing=p1] .who.p2, .game[data-facing=p2] .who.p1 { color: var(--cool); }
 
 .stats { display: flex; align-items: center; gap: 8px; padding: 4px 8px; height: 32px; white-space: nowrap; flex: none; position: relative; }
 .stats.pickable { box-shadow: 0 0 0 2px var(--gold) inset; border-radius: 6px; cursor: pointer; }
@@ -144,7 +144,7 @@ button { font: inherit; color: inherit; }
 .ordering { display: flex; flex-direction: column; height: 100%; gap: 4px; }
 
 /* hand */
-.hand { height: 128px; display: flex; align-items: center; padding: 6px 10px; background: rgba(214, 64, 52, .28); flex: none; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
+.hand { height: 128px; display: flex; align-items: center; padding: 6px 10px; background: rgba(var(--tint, 214, 64, 52), .28); flex: none; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
 .hand.folded { height: 10px; padding: 0; }
 .hand { justify-content: safe center; }
 .hand .card { height: 112px; touch-action: pan-x; }
@@ -168,7 +168,8 @@ button { font: inherit; color: inherit; }
 .cardlist .card.no img { filter: brightness(.5); }
 
 .foot { height: 60px; display: flex; align-items: center; gap: 8px; padding: 8px; background: #0b1410; border-top: 1px solid var(--line); flex: none; }
-.foot.handoff { background: #1a1508; border-top: 1px solid var(--gold); }
+.foot.p1, .foot.p2 { background: linear-gradient(rgba(var(--tint), .38), rgba(var(--tint), .22)), #0b1410; border-top: 2px solid var(--role); }
+.foot.handoff { border-top-width: 3px; }
 .say { flex: 1; font-size: 12px; color: var(--ink-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .say b { color: var(--ink); }
 
@@ -242,3 +243,4 @@ button { font: inherit; color: inherit; }
 .thumb-link { font-size: 12px; }
 .linked { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .linkbtn { color: var(--ink); }
+.btn.undo-other { background: rgba(var(--tint), .85); color: #fff; border-color: var(--role); white-space: normal; line-height: 1.1; max-width: 120px; font-size: 12px; }

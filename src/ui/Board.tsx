@@ -223,7 +223,7 @@ function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Ma
   // Cards overlap just enough to fit the width (80 px each at this height), keeping at least 34 px of each in view.
   const overlap = ids.length > 1 ? Math.min(46, Math.max(4, (ids.length * 80 - (window.innerWidth - 20)) / (ids.length - 1))) : 0;
   return (
-    <div class="hand" data-testid="hand" onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}>
+    <div class={`hand ${p}`} data-testid="hand" onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}>
       {ids.map((id) => {
         const pick = marks.selectable.has(id);
         const cls = ['card', marks.fresh.has(id) ? 'fresh' : '', marks.glow.has(id) ? 'can' : 'no', pick ? 'pickable' : '', marks.selected.has(id) ? 'picked' : '', ghost?.id === id ? 'lifting' : ''].filter(Boolean).join(' ');
@@ -307,7 +307,7 @@ export function Board({ s, ahead, bottom, handShown, handFolded, marks, h: handl
         <LandsStrip s={s} p={bottom} marks={marks} h={h} />
         <StatsBar s={s} p={bottom} mine handHidden={!handShown || handFolded} marks={marks} rings={rings} h={h} ahead={ahead[bottom]} />
       </div>
-      {handShown && !handFolded ? <Hand s={s} p={bottom} marks={marks} h={h} onLift={setLifted} /> : <div class="hand folded" data-testid="hand-folded" />}
+      {handShown && !handFolded ? <Hand s={s} p={bottom} marks={marks} h={h} onLift={setLifted} /> : <div class={`hand folded ${bottom}`} data-testid="hand-folded" />}
       <Arrows s={s} from={arrowFrom} root={root} />
     </div>
   );
