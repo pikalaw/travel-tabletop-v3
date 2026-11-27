@@ -51,15 +51,15 @@ function StatsBar({ s, p, mine, handHidden, marks, rings, h, ahead }: {
     <div class={`stats ${pick ? 'pickable' : ''} ${marks.selected.has(p) ? 'picked' : ''}`} data-target={p} data-testid={`stats-${p}`} onClick={() => pick && h.onPlayer(p)}>
       <span class={`name ${p}`}>{st.name}</span>
       <span class="life" data-testid={`life-${p}`}>♥ {st.life}</span>
-      <button class={`handchip ${mine ? 'mine' : ''}`} onClick={(e) => { if (mine) { e.stopPropagation(); h.onHandChip(); } }} data-testid={`hand-${p}`}>
+      <button class={`handchip ${mine ? 'mine' : ''}`} data-tip={mine ? 'Hide or show your hand.' : 'Cards in hand. Only its owner sees them.'} onClick={(e) => { if (mine) { e.stopPropagation(); h.onHandChip(); } }} data-testid={`hand-${p}`}>
         Hand <b>{st.hand}</b>{mine && handHidden ? ' · hidden' : ''}
       </button>
       <Rings list={rings.get(p)} />
       {stillPassing(s, ahead) && <span class="passing" data-testid={`passing-${p}`}>passes {ahead!.until === 'combat' ? 'this combat' : 'this turn'}</span>}
       <span class="icons">
-        <span class="ic">Lib <b>{st.library}</b></span>
-        <button class="ic" onClick={(e) => { e.stopPropagation(); h.onPile(p, 'graveyard'); }} data-testid={`grave-${p}`}>Grave <b>{st.graveyard}</b>{st.lessons ? ` L${st.lessons}` : ''}</button>
-        <button class={`ic ${st.exileUsable && mine ? 'glow' : ''}`} onClick={(e) => { e.stopPropagation(); h.onPile(p, 'exile'); }} data-testid={`exile-${p}`}>Exile <b>{st.exile}</b></button>
+        <span class="ic" data-tip="Cards left in the library.">Lib <b>{st.library}</b></span>
+        <button class="ic" data-tip="Open the graveyard. L counts Lesson cards." onClick={(e) => { e.stopPropagation(); h.onPile(p, 'graveyard'); }} data-testid={`grave-${p}`}>Grave <b>{st.graveyard}</b>{st.lessons ? ` L${st.lessons}` : ''}</button>
+        <button class={`ic ${st.exileUsable && mine ? 'glow' : ''}`} data-tip="Open exile. It glows when you can cast or play a card from it." onClick={(e) => { e.stopPropagation(); h.onPile(p, 'exile'); }} data-testid={`exile-${p}`}>Exile <b>{st.exile}</b></button>
       </span>
     </div>
   );

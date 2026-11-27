@@ -60,3 +60,26 @@ test('swipes on the full view: sideways steps through the hand, down closes, up 
   await expect(page.getByTestId('card-view')).toHaveCount(0);
   await expect(page.getByTestId('lands-p1')).toContainText('Mountain');
 });
+
+test('holding a button shows its tip; lifting hides it, and the button is not pressed', async ({ page }) => {
+  await page.goto('./?seed=7');
+  await page.evaluate(() => localStorage.clear());
+  await page.goto('./?seed=7');
+  await page.getByTestId('new-game').tap();
+  for (const id of ['bb-firebending', 'bb-attacking', 'bb-zuko-tutorial']) await page.getByTestId(`packet-p1-${id}`).tap();
+  await page.getByTestId('tab-p2').tap();
+  for (const id of ['bb-waterbending', 'bb-allies', 'bb-spells']) await page.getByTestId(`packet-p2-${id}`).tap();
+  await page.getByTestId('start').tap();
+  await page.getByTestId('play-first').tap();
+  const b = (await page.getByTestId('look').boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+  await page.waitForTimeout(700);
+  await expect(page.getByTestId('tip')).toHaveText('Take the phone and show your hand, to act.');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(400);
+  await expect(page.getByTestId('tip')).toHaveCount(0);
+  await expect(page.getByTestId('handoff')).toBeVisible(); // Look was not pressed
+  await page.getByTestId('look').tap(); // a tap still presses it
+  await expect(page.getByTestId('keep')).toBeVisible();
+});

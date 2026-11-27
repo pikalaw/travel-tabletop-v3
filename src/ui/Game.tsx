@@ -214,7 +214,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
     if (off || !d) return null;
     if (intent && need) {
       const name = nameOf(s, intent.object);
-      const cancel = <button class="btn" onClick={() => { setIntent(null); setPicking([]); }} data-testid="cancel">Cancel</button>;
+      const cancel = <button class="btn" onClick={() => { setIntent(null); setPicking([]); }} data-tip="Put the card back. Nothing changes." data-testid="cancel">Cancel</button>;
       switch (need.kind) {
         case 'modes': {
           const pickMode = (i: number) => (need.max === 1 ? setIntent({ ...intent, modes: [i], targets: [] }) : setModes((m) => (m.includes(i) ? m.filter((y) => y !== i) : [...m, i])));
@@ -230,7 +230,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
           <div class="prompt">
             <p><b>{name}</b>: choose X</p>
             <div class="row stepper"><button class="btn" onClick={() => setX((v) => Math.max(0, v - 1))}>−</button><b data-testid="x-value">X = {x}</b><button class="btn" onClick={() => setX((v) => v + 1)}>+</button></div>
-            <div class="row">{cancel}<button class="btn primary" onClick={() => setIntent({ ...intent, x })} data-testid="x-done">Done</button></div>
+            <div class="row">{cancel}<button class="btn primary" onClick={() => setIntent({ ...intent, x })} data-tip="Use this value of X." data-testid="x-done">Done</button></div>
           </div>
         );
         case 'target': return (
@@ -262,8 +262,8 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
               <p><b>{intent.kind === 'cast' ? `Cast ${name}` : `Activate ${name}`}</b>{intent.targets.flat().length > 0 && <span> · target {intent.targets.flat().map((t) => (t === 'p1' || t === 'p2' ? playerName(s, t) : nameOf(s, t))).join(', ')}</span>}</p>
               <p class="dim">Cost {cost || 'none'}{preview ? ` · taps ${preview.tapped.map((id) => nameOf(s, id)).join(', ') || 'nothing'}${preview.floating ? ` · ${preview.floating} floating` : ''}` : ' · not enough mana'}</p>
               <div class="row">
-                <label class="hold"><input type="checkbox" checked={hold} onChange={(e) => setHold((e.target as HTMLInputElement).checked)} /> Hold priority</label>
-                {cancel}<button class="btn primary" onClick={() => send(toChoice(intent), { hold })} data-testid="confirm">{intent.kind === 'cast' ? 'Cast' : 'Activate'}</button>
+                <label class="hold" data-tip="Keep priority after casting, to respond to your own spell."><input type="checkbox" checked={hold} onChange={(e) => setHold((e.target as HTMLInputElement).checked)} /> Hold priority</label>
+                {cancel}<button class="btn primary" onClick={() => send(toChoice(intent), { hold })} data-tip="Pay the cost with the outlined sources and put it on the stack." data-testid="confirm">{intent.kind === 'cast' ? 'Cast' : 'Activate'}</button>
               </div>
             </div>
           );
@@ -274,7 +274,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       case 'mulligan': return (
         <div class="prompt">
           <p>{s.players[d.player].mulligans ? `Mulligan ${s.players[d.player].mulligans}: ` : ''}Keep this hand?</p>
-          <div class="row"><button class="btn" onClick={() => send({ kind: 'mulligan' })} data-testid="mulligan">Mulligan</button><button class="btn primary" onClick={() => send({ kind: 'keep' })} data-testid="keep">Keep</button></div>
+          <div class="row"><button class="btn" onClick={() => send({ kind: 'mulligan' })} data-tip="Shuffle and draw seven again; then put one card on the bottom for each mulligan (London mulligan)." data-testid="mulligan">Mulligan</button><button class="btn primary" onClick={() => send({ kind: 'keep' })} data-tip="Keep this hand." data-testid="keep">Keep</button></div>
         </div>
       );
       case 'bottom': case 'discard': case 'discardEffect': return (
@@ -286,13 +286,13 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       case 'attackers': return (
         <div class="prompt">
           <p>Tap creatures to attack {playerName(s, other(d.player))}.</p>
-          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'attack', attackers: [...atk] })} data-testid="attack">{atk.size ? `Attack with ${atk.size}` : 'No attack'}</button></div>
+          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'attack', attackers: [...atk] })} data-tip="Attack with the creatures you tapped on; with none, skip combat." data-testid="attack">{atk.size ? `Attack with ${atk.size}` : 'No attack'}</button></div>
         </div>
       );
       case 'blockers': return (
         <div class="prompt">
           <p>{armed ? `${nameOf(s, armed)} blocks: tap the attacker` : 'Tap a creature to block with, then the attacker.'}</p>
-          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'block', blocks: [...blocks].map(([blocker, attacker]) => ({ blocker, attacker })) })} data-testid="block">{blocks.size ? `Block with ${blocks.size}` : 'No blocks'}</button></div>
+          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'block', blocks: [...blocks].map(([blocker, attacker]) => ({ blocker, attacker })) })} data-tip="Declare these blocks; with none, take the damage." data-testid="block">{blocks.size ? `Block with ${blocks.size}` : 'No blocks'}</button></div>
         </div>
       );
       case 'damage': {
@@ -322,7 +322,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       case 'triggerOrder': return (
         <div class="prompt">
           <p>{playerName(s, d.player)}: order your triggers. The one on the left resolves first.</p>
-          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'order', triggers: [...order].reverse() })} data-testid="accept-order">Accept order</button></div>
+          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'order', triggers: [...order].reverse() })} data-tip="Put the triggers on the stack in this order: the left one resolves first." data-testid="accept-order">Accept order</button></div>
         </div>
       );
       case 'triggerTargets': {
@@ -393,7 +393,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       return (
         <div class="foot">
           <span class="say"><b>{r?.winner ? `${playerName(s, r.winner)} wins` : 'A draw'}</b> · {r?.reason}</span>
-          <button class="btn" onClick={() => onRematch(r?.winner ? other(r.winner) : 'p1')} data-testid="rematch">Rematch</button>
+          <button class="btn" onClick={() => onRematch(r?.winner ? other(r.winner) : 'p1')} data-tip="Play again with the same decks; the loser chooses to play or draw." data-testid="rematch">Rematch</button>
           <button class="btn primary" onClick={onExit} data-testid="home">Home</button>
         </div>
       );
@@ -402,19 +402,19 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       return (
         <div class="foot handoff" data-testid="handoff">
           <span class="say"><b class={`who ${actor}`}>{playerName(s, actor)} to act</b>: {asking(s)}</span>
-          {d.kind === 'priority' && <button class="btn" onClick={() => setMenu('ahead')} data-testid="bar-pass-ahead">»</button>}
-          {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-testid="bar-pass">Pass</button>}
-          <button class="btn primary" onClick={takeLook} data-testid="look">Look</button>
+          {d.kind === 'priority' && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="bar-pass-ahead">»</button>}
+          {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-tip="Pass without showing your hand. Nothing flips." data-testid="bar-pass">Pass</button>}
+          <button class="btn primary" onClick={takeLook} data-tip="Take the phone and show your hand, to act." data-testid="look">Look</button>
         </div>
       );
     }
     return (
       <div class="foot">
         <span class="say">{d.kind === 'priority' && !intent ? <>Pass: <b>{passMeaning(s)}</b></> : <b>{playerName(s, d.player)}</b>}</span>
-        <button class="btn" disabled={!canUndo(session.game)} onClick={askUndo} data-testid="undo">Undo</button>
-        <button class="btn" onClick={() => setMenu('menu')} data-testid="menu">☰</button>
-        {d.kind === 'priority' && !intent && <button class="btn" onClick={() => setMenu('ahead')} data-testid="pass-ahead">»</button>}
-        {d.kind === 'priority' && !intent && <button class="btn primary" onClick={() => send({ kind: 'pass' })} data-testid="pass">Pass</button>}
+        <button class="btn" disabled={!canUndo(session.game)} onClick={askUndo} data-tip="Take back the last decision, with the automatic passes after it." data-testid="undo">Undo</button>
+        <button class="btn" onClick={() => setMenu('menu')} data-tip="Log, redo, hide your hand, resign, or leave the game." data-testid="menu">☰</button>
+        {d.kind === 'priority' && !intent && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="pass-ahead">»</button>}
+        {d.kind === 'priority' && !intent && <button class="btn primary" onClick={() => send({ kind: 'pass' })} data-tip={`Pass priority: ${passMeaning(s)}.`} data-testid="pass">Pass</button>}
       </div>
     );
   }
