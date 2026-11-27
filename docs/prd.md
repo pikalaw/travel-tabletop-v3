@@ -67,7 +67,9 @@ The windows (a step with neither player's window passes by itself):
 
 A typical turn then has the blocking decision and about three one-tap windows, plus one per spell. The phone moves only when someone responds.
 
-**Passing ahead, out loud.** At any window a player may choose "Pass this combat" or "Pass until end of turn". Since that is a statement about one's own hand, the app shows it to both players ("Claire passes until end of turn"), as saying "no responses" would at a table. It's chosen, not inferred.
+**Passing ahead, out loud.** At any window a player may choose "Pass this combat" or "Pass until end of turn". Since that is a statement about one's own hand, the app shows it to both players ("Claire passes until end of turn"), as saying "no responses" would at a table. It's chosen, not inferred. It ends early when the other player puts a spell, ability or trigger on the stack, since what was said didn't cover it: the player gets the window to respond, and play goes on with the usual stops. Their own spells and triggers don't end it.
+
+**Nothing to do in your own main phase.** When Pass is the only legal move in your own main phase (no land to play, nothing to cast, no ability to activate), the app passes it for you. This is the one stop that reads a hand, and it reveals nothing: the device is yours, and the other player learns only what tapping Pass would have told them.
 
 **Choices that belong to the other player** always hand off, whether or not they need hidden cards: blocking, discarding, choosing a mode for their own trigger, ordering their triggers, and the mulligan. Private looks (search, scry, "look at the top N") happen only on the owner's screen; the other player sees that a look happened and how many cards.
 
