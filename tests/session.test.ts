@@ -1,6 +1,6 @@
 /** The device session: who the board faces, when hands may show, and hand-offs. */
 import { describe, expect, it } from 'vitest';
-import { legalActions } from '../src/engine/engine';
+import { attackCandidates, legalActions } from '../src/engine/engine';
 import type { Choice } from '../src/engine/types';
 import { current, newGame } from '../src/host/controller';
 import { acting, choose, handingOff, look, newInHand, resignGame, startSession, visibleHand, type Session } from '../src/host/session';
@@ -23,6 +23,13 @@ function atMain(): Session {
 }
 
 describe('the device session', () => {
+  /** Passes, from the hand-off bar when the actor isn't holding the device; answers a cleanup discard. */
+  const step = (x: Session): Session => {
+    const d = current(x.game).decision!;
+    if (d.kind === 'discard') { const y = handingOff(x) ? look(x) : x; return ok(choose(y, { kind: 'discard', cards: current(y.game).zones[`${d.player}.hand`].slice(0, d.count) })); }
+    return ok(choose(x, { kind: 'pass' }, { fromBar: handingOff(x) }));
+  };
+
   it('starts blinded, facing the first player; Look shows only the acting hand', () => {
     const x = startSession(newGame(setup(), 1));
     expect(x.facing).toBe('p1');
@@ -53,29 +60,31 @@ describe('the device session', () => {
     expect(visibleHand(x)).toBeNull();
     expect('refused' in choose(x, { kind: 'pass' })).toBe(true); // p2 must Look, or pass from the bar
     x = ok(choose(x, { kind: 'pass' }, { fromBar: true }));
+    // The goblin resolves; with nothing left to do, p1's main phases pass by themselves, up to p2's
+    // window in p1's end step. Nothing flipped: the board still faces p1, unblinded.
+    expect(current(x.game).step).toBe('end');
     expect(x.facing).toBe('p1');
-    expect(visibleHand(x)).toBe('p1');
+    expect(x.revealed).toBe(true);
   });
 
   it('after the other player looks and acts, the board flips back blinded', () => {
+    // Turn 1: p1 plays the Mountain and casts the goblin; then on to p1's turn 3, where it attacks.
     let x = look(atMain());
     x = ok(choose(x, legalActions(current(x.game)).find((c) => c.kind === 'play')!));
     x = ok(choose(x, legalActions(current(x.game)).find((c) => c.kind === 'cast')!));
+    while (current(x.game).decision?.kind !== 'attackers' || current(x.game).turn < 3) x = step(x);
+    x = look(x);
+    x = ok(choose(x, { kind: 'attack', attackers: attackCandidates(current(x.game)) }));
+    // p2's window after attackers: a hand-off; p2 looks and passes (p2 has nothing to block with)
     x = look(x);
     expect(x.facing).toBe('p2');
-    expect(visibleHand(x)).toBe('p2');
     x = ok(choose(x, { kind: 'pass' }));
+    // p1 has the next window: the board flips back to p1, blinded, since p2 may still hold the phone
+    expect(acting(x)).toBe('p1');
     expect(x.facing).toBe('p1');
     expect(x.revealed).toBe(false);
     expect(visibleHand(x)).toBeNull();
   });
-
-  /** Passes, from the hand-off bar when the actor isn't holding the device; answers a cleanup discard. */
-  const step = (x: Session): Session => {
-    const d = current(x.game).decision!;
-    if (d.kind === 'discard') { const y = handingOff(x) ? look(x) : x; return ok(choose(y, { kind: 'discard', cards: current(y.game).zones[`${d.player}.hand`].slice(0, d.count) })); }
-    return ok(choose(x, { kind: 'pass' }, { fromBar: handingOff(x) }));
-  };
 
   it('marks the cards new in a hand since the device last left its player, until it leaves again', () => {
     let x = look(atMain());

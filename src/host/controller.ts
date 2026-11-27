@@ -4,7 +4,7 @@
  * for a player wherever the fixed response windows don't stop, logs those passes as automatic, and
  * keeps the decision log that undo, redo and replay work from.
  */
-import { answer, start } from '../engine/engine';
+import { answer, legalActions, start } from '../engine/engine';
 import type { Choice, GameSetup, GameState, PlayerId, Refusal } from '../engine/types';
 import { other } from '../engine/types';
 
@@ -57,6 +57,17 @@ function push(g: Game, c: LoggedChoice): Game | Refusal {
   return { ...g, record: { ...g.record, choices: [...g.record.choices, c] }, states: [...g.states, next] };
 }
 
+/**
+ * Your own main phase with nothing to do (PRD, "Players and the shared device"): with an empty
+ * stack and Pass your only legal move (no land to play, nothing to cast or activate), the stop is
+ * passed for you. It reads your hand, unlike the fixed windows, but reveals nothing: the device is
+ * yours, and the other player learns only what your tapping Pass would have told them.
+ */
+function nothingToDo(s: GameState, p: PlayerId): boolean {
+  if ((s.step !== 'main1' && s.step !== 'main2') || s.active !== p || s.zones.stack.length) return false;
+  return legalActions(s).every((c) => c.kind === 'pass');
+}
+
 const COMBAT_STEPS = ['beginCombat', 'attackers', 'blockers', 'firstStrikeDamage', 'damage', 'endCombat'];
 
 /** Whether an announcement still holds: until the turn ends, or until combat this turn is over. */
@@ -73,7 +84,7 @@ function autoPass(g: Game, hold?: PlayerId): Game {
     const d = s.decision;
     if (!d || d.kind !== 'priority') return g;
     if (hold === d.player) return g;
-    if (stopsHere(s, d.player) && !stillPassing(s, g.ahead?.[d.player])) return g;
+    if (stopsHere(s, d.player) && !stillPassing(s, g.ahead?.[d.player]) && !nothingToDo(s, d.player)) return g;
     const next = push(g, { choice: { kind: 'pass' }, player: d.player, auto: true });
     if ('refused' in next) throw new Error(`the engine refused an automatic pass: ${next.refused}`);
     g = next;
