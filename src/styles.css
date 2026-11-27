@@ -229,3 +229,4 @@ button { font: inherit; color: inherit; }
 .float.up { color: #8fe39a; } .float.down { color: #ff8b7b; } .float.info { color: #f3dfae; }
 .life .float { top: -2px; left: 110%; transform: none; }
 @keyframes float-up { from { opacity: 0; margin-top: 8px; } 15% { opacity: 1; } to { opacity: 1; margin-top: -14px; } }
+.foot.handoff { gap: 6px; } .foot.handoff .btn { padding: 9px 10px; }

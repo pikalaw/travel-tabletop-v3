@@ -89,7 +89,6 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const [split, setSplit] = useState<Record<string, number>>({});
   const [modes, setModes] = useState<number[]>([]);
   const [x, setX] = useState(0);
-  const [hold, setHold] = useState(false);
   const [away, setAway] = useState<string[] | null>(null);
 
   // ----- playback (PRD, "Playing"): after a tap, each spell or ability that resolved and each round
@@ -130,10 +129,17 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   // ----- the cast or activation in progress
   const need: Need | null = intent && actor ? nextNeed(s, actor, intent) : null;
   const preview = intent && actor && need?.kind === 'confirm' ? paymentPreview(s, actor, toChoice(intent)) : null;
+  // No confirm step when the payment only taps lands (and floating mana): Undo takes back a miscast.
+  // It stays when the payment taps a creature or an artifact (waterbend) or converts mana, which
+  // are easy to miss and costly to notice late.
+  const plainPayment = !!preview && !preview.converted && preview.tapped.every((id) => {
+    const c = characteristics(s, s.objects[id]!);
+    return c.types.includes('Land') && !c.types.includes('Creature');
+  });
+  useEffect(() => { if (intent && plainPayment) send(toChoice(intent)); }, [intent, plainPayment]);
   const startIntent = (i: Intent, drop: Target | null = null) => {
     if (!actor) return;
     setViewing(null); setModes([]); setX(0); setPicking([]);
-    setHold(false);
     setIntent(withDrop(s, actor, i, drop));
   };
   const pickTarget = (t: Target) => {
@@ -293,6 +299,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
           </div>
         );
         case 'confirm': {
+          if (plainPayment) return null; // it goes straight on the stack (above)
           const printed = s.setup.cards[s.objects[intent.object]!.card]!;
           const cost = intent.kind === 'cast' ? (s.objects[intent.object]!.airbended ? '{2}' : formatCost(printed.manaCost, intent.x ?? 0))
             : printed.script?.activated?.[intent.ability ?? 0]?.text.split(':')[0] ?? '';
@@ -301,8 +308,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
               <p><b>{intent.kind === 'cast' ? `Cast ${name}` : `Activate ${name}`}</b>{intent.targets.flat().length > 0 && <span> · target {intent.targets.flat().map((t) => (t === 'p1' || t === 'p2' ? playerName(s, t) : nameOf(s, t))).join(', ')}</span>}</p>
               <p class="dim">Cost {cost || 'none'}{preview ? ` · taps ${preview.tapped.map((id) => nameOf(s, id)).join(', ') || 'nothing'}${preview.floating ? ` · ${preview.floating} floating` : ''}` : ' · not enough mana'}</p>
               <div class="row">
-                <label class="hold" data-tip="Keep priority after casting, to respond to your own spell."><input type="checkbox" checked={hold} onChange={(e) => setHold((e.target as HTMLInputElement).checked)} /> Hold priority</label>
-                {cancel}<button class="btn primary" onClick={() => send(toChoice(intent), { hold })} data-tip="Pay the cost with the outlined sources and put it on the stack." data-testid="confirm">{intent.kind === 'cast' ? 'Cast' : 'Activate'}</button>
+                {cancel}<button class="btn primary" onClick={() => send(toChoice(intent))} data-tip="Pay the cost with the outlined sources and put it on the stack." data-testid="confirm">{intent.kind === 'cast' ? 'Cast' : 'Activate'}</button>
               </div>
             </div>
           );
@@ -441,6 +447,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       return (
         <div class="foot handoff" data-testid="handoff">
           <span class="say"><b class={`who ${actor}`}>{playerName(s, actor)} to act</b>: {asking(s)}</span>
+          {canUndo(session.game) && <button class="btn" onClick={askUndo} data-tip="Take back the last decision. Taking back the other player's asks first." data-testid="bar-undo">Undo</button>}
           {d.kind === 'priority' && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="bar-pass-ahead">»</button>}
           {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-tip="Pass without showing your hand. Nothing flips." data-testid="bar-pass">Pass</button>}
           <button class="btn primary" onClick={takeLook} data-tip="Take the phone and show your hand, to act." data-testid="look">Look</button>

@@ -37,14 +37,13 @@ describe('the controller', () => {
     expect(current(g).decision).toEqual({ kind: 'priority', player: 'p1' });
   });
 
-  it('holding priority keeps the caster\'s window with their own spell on the stack', () => {
+  it('after a cast, the other player gets the window over it; the caster\'s own is passed for them', () => {
     let g = withShock(atMain())[0];
     g = ok(submit(g, legalActions(current(g)).find((c) => c.kind === 'play')!));
     const cast = legalActions(current(g)).find((c) => c.kind === 'cast')!;
-    expect(current(ok(submit(g, cast))).decision).toEqual({ kind: 'priority', player: 'p2' });
-    const held = current(ok(submit(g, cast, { hold: true })));
-    expect(held.decision).toEqual({ kind: 'priority', player: 'p1' });
-    expect(held.zones.stack).toHaveLength(1);
+    const s = current(ok(submit(g, cast)));
+    expect(s.decision).toEqual({ kind: 'priority', player: 'p2' });
+    expect(s.zones.stack).toHaveLength(1);
   });
 
   it('an announcement ends when the other player puts something on the stack', () => {

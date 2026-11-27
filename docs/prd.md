@@ -53,7 +53,7 @@ At every moment the engine knows which player must act (the player with priority
 1. **A pass costs one tap.** Passing needs no hidden information, so the phone can stay flat on the table: the other player taps Pass on the hand-off bar, and no hand is shown. The phone really changes hands only when someone taps Look to act, so the cost falls on the player who's acting, as in paper.
 2. **Windows open only where instants matter.** The pool's 55 instants and 5 flash cards are nearly all combat tricks, removal and three counterspells; almost nothing wants upkeep or the draw step. The engine passes for both players everywhere else.
 3. **The windows are fixed, public and the same for both players.** No per-player settings: if one player's stops were private, a window opening would hint at what they hold. With fixed stops, a window says nothing about anyone's hand: whether to stop never depends on hidden cards, so a player with nothing to cast still gets the window and taps Pass or Look like anyone else. The one exception is your own main phase, below.
-4. **Your own priority after casting is passed for you.** After you cast, the rules give you priority again; the app passes it, unless you tick "Hold priority" while casting, to respond to your own spell.
+4. **Your own priority after casting is passed for you.** After you cast, the rules give you priority again; the app always passes it, so the other player gets the window over your spell next. There is no Hold priority: nothing in the pool needs a response to your own spell before the other player can act, and a spell cast in response to yours gives you a window over it anyway.
 
 The windows (a step with neither player's window passes by itself):
 
@@ -104,7 +104,7 @@ The engine follows the Magic Comprehensive Rules (at least the 14 November 2025 
 - **Costs:** the full cost, with additional and alternative costs, cost increases and reductions (Gran-Gran's discount, affinity for Allies) and X.
 - **Choices:** targets, modes, and how damage or counters are divided.
 
-Mana is paid automatically: players never tap lands by hand. The app taps lands first, and keeps the most useful colours open for the rest of the turn. It asks only when paying would tap a creature (a mana creature, an earthbent land, or a creature helping a waterbend cost), since that creature then can't attack or block, or when two choices leave different colours open and neither is clearly better. The confirm step before paying shows which sources will be tapped, and you can swap any of them.
+Mana is paid automatically: players never tap lands by hand. The app taps lands first, and keeps the most useful colours open for the rest of the turn. It asks only when paying would tap a creature (a mana creature, an earthbent land, or a creature helping a waterbend cost), since that creature then can't attack or block, or when two choices leave different colours open and neither is clearly better. Then the confirm step shows which sources will be tapped.
 
 **Draws happen by themselves.** The draw for the turn and every "draw a card" effect move the card straight to the hand. The app asks only for the real choices: a "may draw", which cards to keep from "look at the top three", what to discard after "draw, then discard". A choice that belongs to the other player hands off.
 
@@ -223,7 +223,7 @@ The battlefields get the full width of the screen. Nothing is dropped on a pile 
 | Your lands strip       | As the opponent's                                                                                                                                                                                                                                                                                                                                                       |
 | Your stats bar         | As the opponent's                                                                                                                                                                                                                                                                                                                                                       |
 | Your hand              | Folded away while blinded or during a hand-off; castable cards glow gold, the rest are dimmed                                                                                                                                                                                                                                                                           |
-| Footer                 | The priority and prompt bar: what passing does ("Pass: combat damage"), Pass, and during a hand-off the hand-off bar with Look and Pass                                                                                                                                                                                                                                 |
+| Footer                 | The priority and prompt bar: what passing does ("Pass: combat damage"), Pass, and during a hand-off the hand-off bar with Undo, » (pass ahead), Pass and Look                                                                                                                                                                                                           |
 
 **The pile icons** open their sheet on a tap, as v2's pile viewers do. An icon glows when something inside is legal for you to use now (a flashback card in your graveyard, an airbended card in exile). When an effect targets a card in one of them, its sheet opens by itself with the legal choices outlined.
 
@@ -245,7 +245,7 @@ The battlefields get the full width of the screen. Nothing is dropped on a pile 
 
 **One gesture rule for every scroller.** In the hand row and the stack row alike, a sideways drag scrolls the row, and a drag up or down lifts a card out of it.
 
-**The band as a drop zone.** While you drag a castable card, the centre band lights up as "Cast", so there is an obvious place to aim. It is not the only place: a drop on empty battlefield space casts as well, a drop on a legal target targets it, and the confirm step still catches a slip.
+**The band as a drop zone.** While you drag a castable card, the centre band lights up as "Cast", so there is an obvious place to aim. It is not the only place: a drop on empty battlefield space casts as well, a drop on a legal target targets it, and Undo takes back a slip.
 
 **Ordering simultaneous triggers.** When several of one player's abilities trigger at the same moment, that player chooses the order they go on the stack (CR 603.3b); the last one put on resolves first. For example, with Avatar Enthusiasts and Haru, Hidden Talent in play, a third Ally entering triggers both. When the order can't matter (identical copies, or triggers that don't touch what the others read or target), the app sets it and asks nothing; when in doubt, it asks:
 
@@ -282,7 +282,7 @@ The board and gestures stay v2's; what changes is that every gesture asks the en
 
 **Dropping on a target targets it.** Drop Lightning Strike on a creature or on a player's stats box, or an Aura on the creature it will enchant. If the drop lands on a legal target, that's the target and the target prompt is skipped. Dropped anywhere else, the app asks, with the legal targets outlined.
 
-**Then the app asks only what the card still needs:** a mode, X, kicker, targets the drop didn't choose. Last comes the confirm step: it shows the total cost and which sources will be tapped. Cancel there puts the card back in your hand with nothing changed.
+**Then the app asks only what the card still needs:** a mode, X, kicker, targets the drop didn't choose. Then it goes on the stack, paid with lands and floating mana, with no confirm step: Undo takes back a miscast, and the hand-off bar offers Undo too, since the cast hands the next decision to the other player. The confirm step appears only when paying would tap a creature or an artifact (a waterbend cost) or turn mana into another colour, which are easy to miss and costly to notice late; it shows the cost and what will be tapped, and Cancel puts the card back with nothing changed.
 
 **Without dragging.** Long-press a card in hand and use Cast in the full view; the same questions follow. On the full view's picture, as in v2: a swipe up casts or plays the card (when that's legal now), a swipe down closes the view, and a sideways swipe steps to the previous or next card in the same hand, row, lands strip, pile or stack.
 

@@ -34,6 +34,7 @@ async function playRandomly(page: Page, seed: number, steps: number) {
     await ((await el.evaluate((e) => e.classList.contains('card'))) ? el.click({ position: { x: 8, y: 30 } }) : el.click());
     return true;
   };
+  let stuck = 0;
   for (let i = 0; i < steps; i++) {
     if (await vis('home')) return;
     if (await vis('playback')) { await page.getByTestId('playback').click(); continue; } // tap skips the playback
@@ -83,6 +84,8 @@ async function playRandomly(page: Page, seed: number, steps: number) {
       await page.getByTestId('pass').click();
       continue;
     }
+    // Between two screens (a cast going out, a hand-off coming in) there may be nothing to tap yet.
+    if (stuck++ < 25) { await page.waitForTimeout(200); continue; } // a budget over the whole run
     throw new Error(`step ${i}: nothing to tap: ${await page.locator('body').innerText()}`);
   }
 }
@@ -136,3 +139,50 @@ for (const seed of [11, 12]) {
     expect(errors).toEqual([]);
   });
 }
+
+test('a cast paid with lands goes straight on the stack, and Undo on the hand-off bar takes it back', async ({ page }) => {
+  await newGame(page, 7, ['bb-firebending', 'bb-attacking', 'bb-zuko-tutorial'], ['bb-waterbending', 'bb-allies', 'bb-spells']);
+  const vis = (id: string) => page.getByTestId(id).first().isVisible();
+  const tapCard = (l: ReturnType<Page['locator']>) => l.click({ position: { x: 8, y: 30 } });
+  /** Lawrence's first hand card that Cast works on now, or null; lands get played on the way. */
+  const findCast = async (): Promise<string | null> => {
+    for (const card of await page.locator('.hand .card.can').all()) {
+      await tapCard(card);
+      if (!(await page.getByTestId('card-view').isVisible())) continue;
+      const enabled = async (id: string) => (await page.getByTestId(id).count()) > 0 && page.getByTestId(id).isEnabled();
+      if (await enabled('action-cast')) return (await card.getAttribute('data-testid'))!.replace('handcard-', '');
+      if (await enabled('action-play')) { await page.getByTestId('action-play').click(); return null; }
+      await page.getByTestId('close-view').click();
+    }
+    return null;
+  };
+  let name: string | null = null;
+  for (let i = 0; i < 120 && !name; i++) {
+    await page.waitForTimeout(50); // let the view open or close
+    if (await vis('playback')) { await page.getByTestId('playback').click(); continue; }
+    if (await vis('keep')) { await page.getByTestId('keep').click(); continue; }
+    if (await page.locator('.prompt .pipbtn').count()) { await page.locator('.prompt .pipbtn').first().click(); continue; }
+    if (await vis('handoff')) {
+      const lawrence = (await page.getByTestId('handoff').innerText()).startsWith('Lawrence');
+      await page.getByTestId(!lawrence && (await vis('bar-pass')) ? 'bar-pass' : 'look').click();
+      continue;
+    }
+    if (await vis('done')) { await tapCard(page.locator('.hand .card.pickable').first()); await page.getByTestId('done').click(); continue; }
+    if (await vis('attack')) { await page.getByTestId('attack').click(); continue; }
+    if (await vis('block')) { await page.getByTestId('block').click(); continue; }
+    if (await vis('pass')) {
+      if ((await page.locator('.half.me .name').innerText()) === 'Lawrence' && (name = await findCast())) break;
+      if (await vis('pass')) await page.getByTestId('pass').click();
+    }
+  }
+  expect(name).toBeTruthy();
+  const hand = await page.locator('.hand .card').count();
+  await page.getByTestId('action-cast').click();
+  while (await page.locator('.prompt .chipbtn').count()) await page.locator('.prompt .chipbtn').first().click();
+  await expect(page.getByTestId('confirm')).toHaveCount(0);
+  await expect(page.getByTestId('handoff')).toBeVisible();
+  await expect(page.getByTestId('stack-1')).toContainText(name!);
+  await page.getByTestId('bar-undo').click();
+  await expect(page.getByTestId('handoff')).toHaveCount(0);
+  await expect(page.locator('.hand .card')).toHaveCount(hand);
+});

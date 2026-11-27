@@ -96,13 +96,12 @@ function endIfAnswered(g: Game, p: PlayerId): Game {
   return { ...g, ahead: rest };
 }
 
-/** Passes for players wherever they have no stop or are passing ahead; `hold` keeps one player's next priority (they held it while casting). */
-function autoPass(g: Game, hold?: PlayerId): Game {
+/** Passes for players wherever they have no stop or are passing ahead. */
+function autoPass(g: Game): Game {
   for (;;) {
     const s = current(g);
     const d = s.decision;
     if (!d || d.kind !== 'priority') return g;
-    if (hold === d.player) return g;
     g = endIfAnswered(g, d.player);
     if (stopsHere(s, d.player) && !stillPassing(s, g.ahead?.[d.player]) && !nothingToDo(s, d.player)) return g;
     const next = push(g, { choice: { kind: 'pass' }, player: d.player, auto: true });
@@ -112,11 +111,11 @@ function autoPass(g: Game, hold?: PlayerId): Game {
 }
 
 /** Answers the current decision for whoever it waits on, then passes automatically where nobody stops. */
-export function submit(g: Game, choice: Choice, opts: { hold?: boolean } = {}): Game | Refusal {
+export function submit(g: Game, choice: Choice): Game | Refusal {
   const d = current(g).decision;
   if (!d) return { refused: 'Nothing to decide' };
   const next = push({ ...g, redo: [] }, { choice, player: d.player, auto: false });
-  return 'refused' in next ? next : autoPass(next, opts.hold ? d.player : undefined);
+  return 'refused' in next ? next : autoPass(next);
 }
 
 /** A player resigns (104.3a), whether or not the game is waiting for them. */

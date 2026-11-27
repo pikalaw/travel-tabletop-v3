@@ -287,7 +287,7 @@ function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0) {
  * What a cast or an activation would spend, for the confirm step: the permanents it taps (for mana,
  * waterbend or a converter) and the floating mana it uses. Null if it can't be paid.
  */
-export function paymentPreview(s: GameState, p: PlayerId, c: Choice): { tapped: ObjectId[]; floating: number } | null {
+export function paymentPreview(s: GameState, p: PlayerId, c: Choice): { tapped: ObjectId[]; floating: number; converted: boolean } | null {
   let pay: { sources: string[] } | null = null;
   if (c.kind === 'cast') pay = s.objects[c.object] ? spellPayment(s, p, c.object, c.x ?? 0) : null;
   else if (c.kind === 'activate') {
@@ -297,13 +297,14 @@ export function paymentPreview(s: GameState, p: PlayerId, c: Choice): { tapped: 
   }
   if (!pay) return null;
   const tapped = new Set<ObjectId>();
-  let floating = 0;
+  let floating = 0, converted = false;
   for (const id of pay.sources) {
+    if (id.startsWith('via:')) converted = true;
     const inner = id.startsWith('via:') ? id.split('>')[1]! : id;
     if (inner.startsWith('pool:') || inner.startsWith('combat:')) floating++;
     else tapped.add((inner.startsWith('wb:') ? inner.slice(3) : inner).split('#')[0]!);
   }
-  return { tapped: [...tapped], floating };
+  return { tapped: [...tapped], floating, converted };
 }
 
 /** Why `p` can't activate ability `index` of this permanent now, or null. With `targets`, also whether those are legal. */
