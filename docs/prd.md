@@ -286,6 +286,8 @@ The board and gestures stay v2's; what changes is that every gesture asks the en
 
 **Without dragging.** Long-press a card in hand and use Cast in the full view; the same questions follow. On the full view's picture, as in v2: a swipe up casts or plays the card (when that's legal now), a swipe down closes the view, and a sideways swipe steps to the previous or next card in the same hand, row, lands strip, pile or stack.
 
+**Playback: what just happened.** One tap can do several things before the board settles: a spell resolves, a trigger resolves after it, combat damage is dealt. After each tap the app plays them back one at a time, about a second each. The centre band shows the source's picture and the text that did it ("Iroh's ability: put a +1/+1 counter on target creature"), in its controller's colour, with what else happened ("Sokka dies"). Whatever it changed pulses on the board: a power/toughness change or a counter in green or red with a small label ("+1/+1 counter", "−2/−2"), a life total with "−3", a permanent that enters. Passes are never played back. A tap anywhere skips the rest. Only public changes are shown, so a draw pulses nothing but the hand count. The changes come from comparing the board before and after each step, so every card works without its own animation.
+
 **Legal moves are highlighted.** Whenever you have priority, everything you could do right now glows:
 
 - **Cards in hand you can cast or play,** counting your untapped lands, other mana sources and any floating mana. Cost changes are already included.

@@ -231,3 +231,95 @@ export function siblings(s: GameState, id: ObjectId, shownHand: PlayerId | null)
   if (zone === 'hand') return p === shownHand ? [...s.zones[o.zone]] : [];
   return [...s.zones[o.zone]].reverse();
 }
+
+/** A change to pulse: a creature's numbers or counters, a life total, a permanent arriving. */
+export interface Pulse { label: string; kind: 'up' | 'down' | 'info' }
+
+/** One step of playback: a spell or ability resolving, or combat damage, and what it changed. */
+export interface Beat {
+  /** The index of the state just after it, in the game's list of states. */
+  at: number;
+  title: string;
+  /** The source's picture (absent for combat damage), its controller, and the text that did it. */
+  image?: string;
+  controller?: PlayerId;
+  text?: string;
+  /** What else happened in that step, as the log says it ("Sokka dies"). */
+  lines: string[];
+  pulses: Map<Target, Pulse>;
+}
+
+const sign = (n: number) => (n < 0 ? `−${-n}` : `+${n}`);
+
+/** What changed on the board from one state to the next, by object or player. */
+export function changes(a: GameState, b: GameState): Map<Target, Pulse> {
+  const out = new Map<Target, Pulse>();
+  const add = (t: Target, label: string, kind: Pulse['kind']) => {
+    const was = out.get(t);
+    out.set(t, was ? { label: `${was.label} · ${label}`, kind: was.kind === kind ? kind : 'info' } : { label, kind });
+  };
+  for (const p of ['p1', 'p2'] as const) {
+    const d = b.players[p].life - a.players[p].life;
+    if (d) add(p, sign(d), d > 0 ? 'up' : 'down');
+  }
+  const before = new Set(a.zones.battlefield);
+  for (const id of b.zones.battlefield) {
+    const ob = b.objects[id]!;
+    if (!before.has(id)) { add(id, 'enters', 'info'); continue; }
+    const oa = a.objects[id]!;
+    const ca = characteristics(a, oa), cb = characteristics(b, ob);
+    const counter = (k: string) => (ob.counters[k] ?? 0) - (oa.counters[k] ?? 0);
+    // Counters are named as counters, so the power and toughness they add isn't named twice.
+    const fromCounters = counter('+1/+1') - counter('-1/-1');
+    if (cb.types.includes('Creature') && ca.types.includes('Creature')) {
+      const dp = cb.power - ca.power - fromCounters, dt = cb.toughness - ca.toughness - fromCounters;
+      if (dp || dt) add(id, `${sign(dp)}/${sign(dt)}`, dp + dt >= 0 ? 'up' : 'down');
+    }
+    if (!ca.types.includes('Creature') && cb.types.includes('Creature')) add(id, 'becomes a creature', 'info');
+    for (const k of new Set([...Object.keys(oa.counters), ...Object.keys(ob.counters)])) {
+      const d = counter(k);
+      if (!d) continue;
+      const pt = k === '+1/+1' || k === '-1/-1';
+      const n = pt ? `${sign(k === '+1/+1' ? d : -d)}/${sign(k === '+1/+1' ? d : -d)}` : `${sign(d)} ${k}`;
+      add(id, `${n} counter${Math.abs(d) > 1 ? 's' : ''}`, (k === '-1/-1' || k === 'stun') === d > 0 ? 'down' : 'up');
+    }
+    const dmg = ob.damage - oa.damage;
+    if (dmg > 0) add(id, `${dmg} damage`, 'down');
+    for (const kw of cb.keywords) if (!ca.keywords.includes(kw)) add(id, kw, 'up');
+  }
+  return out;
+}
+
+const RESOLVES = / resolves$| does nothing: /;
+
+/**
+ * The steps worth playing back between two points of a game (PRD, "Playing"): each spell or
+ * ability that resolved, and each round of combat damage, with what it changed. Passes and
+ * everything else that changes nothing on the board are skipped. Only public facts are used.
+ */
+export function beats(states: readonly GameState[], from: number, to: number): Beat[] {
+  const out: Beat[] = [];
+  for (let i = from + 1; i <= to; i++) {
+    const a = states[i - 1]!, b = states[i]!;
+    const fresh = b.events.slice(a.events.length).map((e) => e.text);
+    const resolved = fresh.find((t) => RESOLVES.test(t));
+    const top = a.zones.stack[a.zones.stack.length - 1];
+    // Damage dealt without anything resolving is combat damage (the only other kind comes from a resolution).
+    const combat = !resolved && fresh.some((t) => / deals \d+ damage to /.test(t));
+    if (!resolved && !combat) continue;
+    const lines = fresh.filter((t) => !RESOLVES.test(t)).slice(0, 4);
+    if (resolved && top && a.objects[top]) {
+      const o = a.objects[top]!;
+      const ab = o.ability;
+      const script = a.setup.cards[o.card]?.script;
+      // A permanent spell's text is what the permanent does later; its resolving is just "enters".
+      const permanent = !ab && ['Creature', 'Artifact', 'Enchantment', 'Land', 'Planeswalker', 'Battle'].some((t) => characteristics(a, o).types.includes(t));
+      const text = ab ? (ab.kind === 'activated' ? script?.activated?.[ab.index]?.text : triggeredAbility(a, o.card, ab.index).text) : permanent ? '' : a.setup.cards[o.card]!.text;
+      out.push({
+        at: i, title: ab ? `${ab.sourceName}'s ability` : nameOf(a, top), image: imageOf(a, top), controller: o.controller,
+        text: resolved.includes(' does nothing: ') ? 'Its target is gone: it does nothing.' : text ?? '', lines, pulses: changes(a, b),
+      });
+    } else out.push({ at: i, title: 'Combat damage', lines, pulses: changes(a, b) });
+  }
+  return out;
+}

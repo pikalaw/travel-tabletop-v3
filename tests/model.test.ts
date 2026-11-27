@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { act } from './engine-support';
 import { board, lands, passBoth, settle } from './cards/harness';
-import { battlefieldRow, landsStrip, ptBreakdown, siblings, stackItems, targetRings } from '../src/ui/model';
+import { battlefieldRow, beats, landsStrip, ptBreakdown, siblings, stackItems, targetRings } from '../src/ui/model';
+import type { GameState } from '../src/engine/types';
 
 describe('the view model', () => {
   it('breaks power and toughness down, and draws an Aura with what it enchants', () => {
@@ -39,5 +40,19 @@ describe('the view model', () => {
     expect(siblings(s, ids.p1[2]!, 'p1')).toEqual([ids.p1[2], ids.p1[3]]);
     expect(siblings(s, ids.hand1[0]!, 'p1').slice(-2)).toEqual(ids.hand1);
     expect(siblings(s, ids.hand1[0]!, null)).toEqual([]);
+  });
+
+  it('plays back each resolution with what it changed, and skips passes', () => {
+    // Seismic Tutelage resolves (the Aura enters), then its trigger resolves (+1/+1 counter on the Rhino).
+    const { s, ids } = board({ p1: ['Komodo Rhino', ...lands(4, 'Forest')], hand1: ['Seismic Tutelage'] });
+    const states: GameState[] = [s];
+    const push = (c: Parameters<typeof act>[1]) => { states.push(act(states[states.length - 1]!, c)); };
+    push({ kind: 'cast', object: ids.hand1[0]!, targets: [[ids.p1[0]!]] });
+    while (states[states.length - 1]!.zones.stack.length || states[states.length - 1]!.pendingTriggers.length) push({ kind: 'pass' });
+    const bs = beats(states, 0, states.length - 1);
+    expect(bs.map((b) => b.title)).toEqual(['Seismic Tutelage', "Seismic Tutelage's ability"]);
+    expect(bs[1]!.pulses.get(ids.p1[0]!)).toMatchObject({ kind: 'up' });
+    expect(bs[1]!.pulses.get(ids.p1[0]!)!.label).toBe('+1/+1 counter'); // named once, as a counter
+    expect(bs[1]!.text).toBe('When this Aura enters, put a +1/+1 counter on enchanted creature.');
   });
 });

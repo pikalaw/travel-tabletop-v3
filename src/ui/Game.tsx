@@ -3,7 +3,7 @@
  * engine or a cast in progress is asking, and the footer (PRD, "Playing"). Every gesture is an
  * intent; only an answer the engine accepts changes the game.
  */
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { characteristics } from '../engine/characteristics';
 import { proposedSplit } from '../engine/combat';
 import { attackCandidates, blockCandidates, legalActions, paymentPreview, triggerTargetOptions } from '../engine/engine';
@@ -15,10 +15,10 @@ import { acting, choose, handingOff, look, newInHand, redoLast, resignGame, undo
 import { Board, type Marks } from './Board';
 import { CardView, type CardAction } from './CardView';
 import { nextNeed, toChoice, withDrop, type Intent, type Need } from './flow';
-import { cardImage, formatCost, nameOf, passMeaning, playerName, siblings } from './model';
+import { beats, cardImage, formatCost, nameOf, passMeaning, playerName, siblings, type Beat } from './model';
 import { CardList, Sheet } from './Sheets';
 
-const EMPTY: Marks = { selectable: new Set(), selected: new Set(), glow: new Set(), paying: new Set(), blocks: new Map(), fresh: new Set() };
+const EMPTY: Marks = { selectable: new Set(), selected: new Set(), glow: new Set(), paying: new Set(), blocks: new Map(), fresh: new Set(), pulse: new Map() };
 
 /** Words for what the acting player must decide, for the hand-off bar. */
 function asking(s: GameState): string {
@@ -43,6 +43,24 @@ function asking(s: GameState): string {
     case 'payOrElse': return `pay ${d.cost}${d.waterbend ? `waterbend {${d.waterbend}}` : ''}?`;
     case 'pick': return d.text.toLowerCase();
   }
+}
+
+/** How long each step of playback shows. */
+const BEAT_MS = 1100;
+
+function BeatBanner({ s, beat, n, of }: { s: GameState; beat: Beat; n: number; of: number }) {
+  return (
+    <div class={`beat ${beat.controller ?? ''}`} data-testid="beat">
+      {beat.image ? <img src={beat.image} alt="" /> : <span class="beat-icon">⚔</span>}
+      <span class="beat-text">
+        <b class={beat.controller ? `by ${beat.controller}` : ''}>{beat.title}</b>
+        {beat.controller && <span class="dim"> · {playerName(s, beat.controller)}</span>}
+        {of > 1 && <span class="dim"> · {n}/{of}</span>}
+        {beat.text && <span class="beat-ability">{beat.text}</span>}
+        {beat.lines.map((t, i) => <span key={i} class="beat-line">{t}</span>)}
+      </span>
+    </div>
+  );
 }
 
 export function GameScreen({ session, onChange, onExit, onRematch }: {
@@ -73,6 +91,25 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const [x, setX] = useState(0);
   const [hold, setHold] = useState(false);
   const [away, setAway] = useState<string[] | null>(null);
+
+  // ----- playback (PRD, "Playing"): after a tap, each spell or ability that resolved and each round
+  // of combat damage is shown in turn, about a second each, with what it changed pulsing. A tap skips.
+  const states = session.game.states;
+  const seen = useRef(states.length);
+  const [play, setPlay] = useState<{ beats: Beat[]; k: number } | null>(null);
+  useEffect(() => {
+    const before = seen.current;
+    seen.current = states.length;
+    if (states.length <= before) { setPlay(null); return; } // undo, or nothing new
+    const bs = beats(states, before - 1, states.length - 1);
+    setPlay(bs.length ? { beats: bs, k: 0 } : null);
+  }, [states.length]);
+  useEffect(() => {
+    if (!play) return undefined;
+    const t = setTimeout(() => setPlay((p) => (p && p.k + 1 < p.beats.length ? { ...p, k: p.k + 1 } : null)), BEAT_MS);
+    return () => clearTimeout(t);
+  }, [play]);
+  const beat = play?.beats[play.k];
 
   useEffect(() => {
     setAtk(new Set()); setBlocks(new Map()); setArmed(null); setChosen([]); setPicking([]);
@@ -139,6 +176,8 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       default: break;
     }
   }
+
+  if (beat) marks = { ...EMPTY, pulse: beat.pulses }; // playback: only what changed, nothing to pick
 
   const toggleChosen = (id: ObjectId, max: number) => setChosen((c) => (c.includes(id) ? c.filter((y) => y !== id) : c.length < max ? [...c, id] : max === 1 ? [id] : c));
 
@@ -444,7 +483,8 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
 
   return (
     <div class="game" data-facing={me}>
-      <Board s={s} ahead={session.game.ahead ?? {}} bottom={me} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(orderBand ? { band: orderBand } : {})} />
+      <Board s={beat ? states[beat.at]! : s} ahead={session.game.ahead ?? {}} bottom={me} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(beat ? { band: <BeatBanner s={s} beat={beat} n={play!.k + 1} of={play!.beats.length} /> } : orderBand ? { band: orderBand } : {})} />
+      {beat && <div class="skip" data-testid="playback" onClick={() => setPlay(null)}><span>Tap to skip</span></div>}
       {away && !off && (
         <div class="away" data-testid="away" onClick={() => setAway(null)}>
           <b>While you were away</b>

@@ -25,9 +25,18 @@ async function playRandomly(page: Page, seed: number, steps: number) {
   const rnd = (n: number) => { r = (r * 1103515245 + 12345) % 2147483648; return r % n; };
   const vis = (id: string) => page.getByTestId(id).first().isVisible();
   const enabled = async (id: string) => (await vis(id)) && page.getByTestId(id).first().isEnabled();
-  const any = async (sel: string) => { const l = page.locator(sel); const n = await l.count(); if (!n) return false; await l.nth(rnd(n)).click(); return true; };
+  // Overlapped hand cards show only their left strip: tap there, as a player would.
+  const any = async (sel: string) => {
+    const l = page.locator(sel);
+    const n = await l.count();
+    if (!n) return false;
+    const el = l.nth(rnd(n));
+    await ((await el.evaluate((e) => e.classList.contains('card'))) ? el.click({ position: { x: 8, y: 30 } }) : el.click());
+    return true;
+  };
   for (let i = 0; i < steps; i++) {
     if (await vis('home')) return;
+    if (await vis('playback')) { await page.getByTestId('playback').click(); continue; } // tap skips the playback
     if (await vis('handoff')) {
       await expect(page.locator('.hand:not(.folded)'), 'no hand shows during a hand-off').toHaveCount(0);
       await expect(page.locator('.prompt'), 'no prompt shows during a hand-off').toHaveCount(0);

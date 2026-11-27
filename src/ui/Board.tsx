@@ -8,7 +8,7 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { GameState, ObjectId, PlayerId, Target } from '../engine/types';
 import { other } from '../engine/types';
 import { stillPassing, type PassAhead } from '../host/controller';
-import { battlefieldRow, imageOf, landsStrip, stackItems, stats, targetRings, turnLine, type Permanent } from './model';
+import { battlefieldRow, imageOf, landsStrip, stackItems, stats, targetRings, turnLine, type Permanent, type Pulse } from './model';
 
 /** What the board highlights, and where taps go. */
 export interface Marks {
@@ -23,6 +23,8 @@ export interface Marks {
   blocks: Map<ObjectId, ObjectId>;
   /** Cards new in the shown hand since the device last left its player. */
   fresh: Set<ObjectId>;
+  /** What the step being played back changed: these pulse, with a label. */
+  pulse: Map<Target, Pulse>;
 }
 
 export interface BoardHandlers {
@@ -47,10 +49,11 @@ function StatsBar({ s, p, mine, handHidden, marks, rings, h, ahead }: {
 }) {
   const st = stats(s, p);
   const pick = marks.selectable.has(p);
+  const pulse = marks.pulse.get(p);
   return (
     <div class={`stats ${pick ? 'pickable' : ''} ${marks.selected.has(p) ? 'picked' : ''}`} data-target={p} data-testid={`stats-${p}`} onClick={() => pick && h.onPlayer(p)}>
       <span class={`name ${p}`}>{st.name}</span>
-      <span class="life" data-testid={`life-${p}`}>♥ {st.life}</span>
+      <span class={`life ${pulse ? `pulse ${pulse.kind}` : ''}`} data-testid={`life-${p}`}>♥ {st.life}{pulse && <span class={`float ${pulse.kind}`}>{pulse.label}</span>}</span>
       <button class={`handchip ${mine ? 'mine' : ''}`} data-tip={mine ? 'Hide or show your hand.' : 'Cards in hand. Only its owner sees them.'} onClick={(e) => { if (mine) { e.stopPropagation(); h.onHandChip(); } }} data-testid={`hand-${p}`}>
         Hand <b>{st.hand}</b>{mine && handHidden ? ' · hidden' : ''}
       </button>
@@ -93,7 +96,8 @@ function CardTile({ s, perm, marks, rings, h, attackerOf }: {
   s: GameState; perm: Permanent; marks: Marks; rings: ReturnType<typeof targetRings>; h: BoardHandlers; attackerOf?: string;
 }) {
   const pick = marks.selectable.has(perm.id);
-  const cls = ['card', perm.tapped ? 'tapped' : '', pick ? 'pickable' : '', marks.selected.has(perm.id) ? 'picked' : '',
+  const pulse = marks.pulse.get(perm.id);
+  const cls = ['card', pulse ? `pulse ${pulse.kind}` : '', perm.tapped ? 'tapped' : '', pick ? 'pickable' : '', marks.selected.has(perm.id) ? 'picked' : '',
     marks.glow.has(perm.id) ? 'glow' : '', marks.paying.has(perm.id) ? 'paying' : ''].filter(Boolean).join(' ');
   return (
     <div class={cls} data-target={perm.id} data-testid={`perm-${perm.name}`} onClick={() => h.onCard(perm.id)}>
@@ -111,6 +115,7 @@ function CardTile({ s, perm, marks, rings, h, attackerOf }: {
         </span>
       )}
       <Rings list={rings.get(perm.id)} />
+      {pulse && <span class={`float ${pulse.kind}`} data-testid="pulse">{pulse.label}</span>}
       <span class="sr">{s.setup.players[s.objects[perm.id]!.controller].name}</span>
     </div>
   );
