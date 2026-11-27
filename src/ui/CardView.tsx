@@ -48,6 +48,14 @@ export function CardView({ s, id, actor, siblings, onAction, onNavigate, onClose
   const rulings = card ? pool.rulings[card.oracleId] ?? [] : [];
   const abilityText = ability ? (ability.kind === 'activated' ? script?.activated?.[ability.index]?.text : script?.triggered?.[ability.index]?.text) : undefined;
   const attached = s.zones.battlefield.filter((a) => s.objects[a]!.attachedTo === id);
+  // A card and what's attached to it, as the board groups them: the attachments, then the card.
+  const hostId = o.attachedTo && s.objects[o.attachedTo]?.zone === 'battlefield' ? o.attachedTo : id;
+  const group = o.zone === 'battlefield' ? [...s.zones.battlefield.filter((a) => s.objects[a]!.attachedTo === hostId), hostId] : [id];
+  const link = (to: ObjectId) => (
+    <button key={to} class="btn chipbtn linkbtn" onClick={() => onNavigate(to)} data-testid={`link-${nameOf(s, to)}`}>
+      {nameOf(s, to)}{s.objects[to]!.controller !== o.controller ? ` (${s.setup.players[s.objects[to]!.controller].name}'s)` : ''}
+    </button>
+  );
   return (
     <div class="sheet full" data-testid="card-view" onClick={onClose}>
       <div class="full-inner" onClick={(e) => e.stopPropagation()}>
@@ -72,6 +80,16 @@ export function CardView({ s, id, actor, siblings, onAction, onNavigate, onClose
               if (i >= 0 && next) onNavigate(next);
             }
           }} />
+        {group.length > 1 && (
+          <div class="thumbs" data-testid="thumbs">
+            {group.map((g, i) => (
+              <span key={g} class="thumb-wrap">
+                {i > 0 && <span class="thumb-link">🔗</span>}
+                <img class={`thumb ${g === id ? 'on' : ''}`} src={imageOf(s, g)} alt={nameOf(s, g)} onClick={() => onNavigate(g)} data-testid={`thumb-${nameOf(s, g)}`} />
+              </span>
+            ))}
+          </div>
+        )}
         {siblings.length > 1 && <p class="dim nav-hint">{siblings.indexOf(id) + 1} of {siblings.length} · swipe sideways for the {siblings.indexOf(id) > 0 ? 'previous or ' : ''}next</p>}
         <div class="full-text">
           <h2>{ability ? `${ability.sourceName}'s ability` : c.name}</h2>
@@ -87,7 +105,8 @@ export function CardView({ s, id, actor, siblings, onAction, onNavigate, onClose
           {c.abilitiesRemoved && <p class="dim">It has lost all abilities.</p>}
           {c.keywords.length > 0 && <p class="dim">{c.keywords.join(', ')}</p>}
           {!ability && <p class="oracle">{printed.text}</p>}
-          {attached.length > 0 && <p class="dim">Attached: {attached.map((a) => nameOf(s, a)).join(', ')}</p>}
+          {attached.length > 0 && <p class="dim linked">Attached: {attached.map(link)}</p>}
+          {hostId !== id && <p class="dim linked">{c.subtypes.includes('Aura') ? 'Enchanting' : 'Attached to'}: {link(hostId)}</p>}
           {o.targets && o.targets.flat().length > 0 && <p class="dim">Targets: {o.targets.flat().map((t) => (t === 'p1' || t === 'p2' ? s.setup.players[t].name : s.objects[t] ? nameOf(s, t) : 'gone')).join(', ')}</p>}
           <div class="actions">
             {actions.map((a, i) => (

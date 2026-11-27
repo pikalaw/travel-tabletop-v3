@@ -13,7 +13,7 @@ describe('the view model', () => {
     expect(ptBreakdown(s, ids.p1[0]!)).toMatch(/^\d+\/\d+ = \d+\/\d+ printed, \+1\/\+1 counter$/);
     const row = battlefieldRow(s, 'p1');
     expect(row).toHaveLength(1); // the Aura is drawn with what it enchants
-    expect(row[0]!.auras).toHaveLength(1);
+    expect(row[0]!.attached).toHaveLength(1);
     expect(row[0]!.pt?.up).toBe(true);
     expect(landsStrip(s, 'p1').chips).toEqual([expect.objectContaining({ name: 'Forest', pips: expect.any(Array) })]);
   });
@@ -54,5 +54,16 @@ describe('the view model', () => {
     expect(bs[1]!.pulses.get(ids.p1[0]!)).toMatchObject({ kind: 'up' });
     expect(bs[1]!.pulses.get(ids.p1[0]!)!.label).toBe('+1/+1 counter'); // named once, as a counter
     expect(bs[1]!.text).toBe('When this Aura enters, put a +1/+1 counter on enchanted creature.');
+  });
+
+  it('draws an Aura with what it enchants, whoever controls it, and steps through it in the row', () => {
+    // Lawrence casts Path to Redemption on Claire's Capital Guard: it sits in Claire's row, before the Guard.
+    const { s, ids } = board({ p1: lands(2, 'Plains'), p2: ['Komodo Rhino', 'Capital Guard'], hand1: ['Path to Redemption'] });
+    const after = settle(passBoth(act(s, { kind: 'cast', object: ids.hand1[0]!, targets: [[ids.p2[1]!]] })));
+    const aura = after.zones.battlefield.find((id) => after.objects[id]!.attachedTo === ids.p2[1])!;
+    expect(battlefieldRow(after, 'p1').map((p) => p.id)).not.toContain(aura);
+    const guard = battlefieldRow(after, 'p2').find((p) => p.id === ids.p2[1])!;
+    expect(guard.attached.map((a) => [a.id, a.controller])).toEqual([[aura, 'p1']]);
+    expect(siblings(after, aura, null)).toEqual([ids.p2[0], aura, ids.p2[1]]);
   });
 });

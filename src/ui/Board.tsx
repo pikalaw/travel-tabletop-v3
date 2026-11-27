@@ -101,14 +101,12 @@ function CardTile({ s, perm, marks, rings, h, attackerOf }: {
     marks.glow.has(perm.id) ? 'glow' : '', marks.paying.has(perm.id) ? 'paying' : ''].filter(Boolean).join(' ');
   return (
     <div class={cls} data-target={perm.id} data-testid={`perm-${perm.name}`} onClick={() => h.onCard(perm.id)}>
-      {perm.auras.map((a, i) => <img key={a.id} class={`aura ${a.controller}`} style={{ top: `${-10 - i * 8}px` }} src={a.image} alt="" onClick={(e) => { e.stopPropagation(); h.onCard(a.id); }} />)}
       <img src={perm.image} alt={perm.name} draggable={false} />
       {perm.sick && !perm.attacking && <span class="sick" title="Summoning sick: it can't attack or tap yet">zZ</span>}
       {perm.attacking && <span class="atk">ATK</span>}
       {perm.blocking && <span class="atk blk">BLK</span>}
       {attackerOf && <span class="atk blk">→ {attackerOf}</span>}
       {perm.counters.length > 0 && <span class="counters">{perm.counters.map(([k, n]) => <span key={k}>{k === '+1/+1' ? `+${n}` : `${n} ${k}`}</span>)}</span>}
-      {perm.attachedTo && <span class="equipped">on {perm.attachedTo}</span>}
       {perm.pt && (
         <span class={`pt ${perm.pt.up ? 'up' : ''} ${perm.pt.down ? 'down' : ''}`}>
           {perm.pt.power}/{perm.pt.toughness}{perm.damage > 0 && <span class="dmg"> −{perm.damage}</span>}
@@ -121,15 +119,31 @@ function CardTile({ s, perm, marks, rings, h, attackerOf }: {
   );
 }
 
+/** How much of an attached card shows beside what it's attached to. */
+const ATTACHED_SHARE = 0.34;
+
 function Field({ s, p, marks, rings, h }: { s: GameState; p: PlayerId; marks: Marks; rings: ReturnType<typeof targetRings>; h: BoardHandlers }) {
   const row = battlefieldRow(s, p);
   const names = new Map(row.map((x) => [x.id, x.name]));
   return (
-    <div class="field" style={{ '--n': Math.max(row.length, 3) }} data-testid={`field-${p}`}>
+    <div class="field" style={{ '--n': Math.max(row.reduce((n, x) => n + 1 + ATTACHED_SHARE * x.attached.length, 0), 3) }} data-testid={`field-${p}`}>
       {row.map((perm) => {
         const a = marks.blocks.get(perm.id);
         const attackerName = a ? (names.get(a) ?? battlefieldRow(s, other(p)).find((x) => x.id === a)?.name) : undefined;
-        return <CardTile key={perm.id} s={s} perm={perm} marks={marks} rings={rings} h={h} {...(attackerName ? { attackerOf: attackerName } : {})} />;
+        const tile = <CardTile key={perm.id} s={s} perm={perm} marks={marks} rings={rings} h={h} {...(attackerName ? { attackerOf: attackerName } : {})} />;
+        if (!perm.attached.length) return tile;
+        // Its Auras and Equipment sit to its left, a third of each showing, linked to it.
+        return (
+          <div key={perm.id} class="group" data-testid={`group-${perm.name}`}>
+            {perm.attached.map((x) => (
+              <div key={x.id} class={`att-slot ${x.controller}`}>
+                <CardTile s={s} perm={x} marks={marks} rings={rings} h={h} />
+                <span class="link" aria-label={`attached to ${perm.name}`}>🔗</span>
+              </div>
+            ))}
+            {tile}
+          </div>
+        );
       })}
     </div>
   );

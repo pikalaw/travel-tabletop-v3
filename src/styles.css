@@ -94,15 +94,21 @@ button { font: inherit; color: inherit; }
 
 .field { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: safe center; gap: 6px; padding: 14px 6px 6px; overflow-x: auto; }
 .card { position: relative; height: 100%; max-height: 150px; aspect-ratio: 63 / 88; flex: none; padding: 0; border: 0; background: none; cursor: pointer; transition: transform .15s; }
-.field .card { height: min(100%, max(76px, calc((100vw - 6px - 6px * var(--n)) / var(--n) * 1.397))); }
+.field { --ch: min(100%, max(76px, calc((100vw - 6px - 6px * var(--n)) / var(--n) * 1.397))); }
+.field > .card, .field > .group { height: var(--ch); }
+/* An Aura or Equipment: a third of it shows to the left of what it's attached to, which overlaps the rest. */
+.group { display: flex; align-items: center; flex: none; }
+.group > .card { height: 100%; z-index: 1; }
+.att-slot { position: relative; height: 100%; aspect-ratio: 21.42 / 88; flex: none; } /* 34% of a card (63 / 88) */
+.att-slot > .card { position: absolute; left: 0; top: 0; height: 100%; }
+.att-slot > .card img { box-shadow: 0 0 0 2px var(--role); }
+.att-slot .link { position: absolute; right: -10px; top: 50%; transform: translateY(-50%); z-index: 3; font-size: 13px; line-height: 1; padding: 3px; border-radius: 50%; background: rgba(0, 0, 0, .85); border: 1.5px solid var(--gold); pointer-events: none; }
 .card img { height: 100%; width: 100%; border-radius: 6px; display: block; position: relative; }
 .card.tapped { transform: rotate(12deg) scale(.92); opacity: .8; }
 .card.pickable img { box-shadow: 0 0 0 2px var(--gold), 0 0 10px rgba(201, 166, 90, .7); }
 .card.picked img { box-shadow: 0 0 0 3px #fff, 0 0 12px rgba(255, 255, 255, .7); }
 .card.glow img { box-shadow: 0 0 0 2px var(--gold), 0 0 10px rgba(201, 166, 90, .55); }
 .card.paying img { box-shadow: 0 0 0 2px var(--gold); filter: brightness(.75); }
-.card .aura { position: absolute; left: 4px; right: 4px; width: auto; height: 100%; border-radius: 6px; z-index: 0; border: 2px solid var(--role, transparent); }
-.card .aura.p1, .card .aura.p2 { border-color: var(--role); }
 .pt { position: absolute; right: 3px; bottom: 3px; background: rgba(0, 0, 0, .85); border: 1px solid rgba(255, 255, 255, .3); border-radius: 8px; padding: 0 5px; font-size: 12px; font-weight: 800; z-index: 1; }
 .pt.up { color: #8fe39a; } .pt.down { color: #ff8b7b; }
 .pt .dmg, .dmg { color: #ff6b5b; }
@@ -110,7 +116,6 @@ button { font: inherit; color: inherit; }
 .atk.blk { background: #2e5fb0; top: auto; bottom: 22px; }
 .counters { position: absolute; left: 3px; bottom: 3px; display: flex; gap: 2px; z-index: 1; }
 .counters span { background: #2f6d3a; color: #fff; border-radius: 7px; padding: 0 4px; font-size: 10px; font-weight: 800; }
-.equipped { position: absolute; left: 3px; top: 3px; font-size: 9px; background: rgba(0, 0, 0, .8); padding: 0 3px; border-radius: 5px; z-index: 1; }
 .rings { position: absolute; right: 3px; top: 3px; display: flex; flex-direction: column; gap: 2px; z-index: 2; }
 .ring { font-size: 10px; font-weight: 800; padding: 0 4px; border-radius: 8px; background: rgba(0, 0, 0, .85); border: 1.5px solid var(--role); color: var(--role); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -176,7 +181,7 @@ button { font: inherit; color: inherit; }
 .sheet-body { overflow-y: auto; padding: 10px 12px; }
 .menu { display: flex; flex-direction: column; gap: 8px; }
 .log { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; -webkit-user-select: text; user-select: text; }
-.sheet.full { justify-content: center; align-items: center; background: rgba(0, 0, 0, .82); }
+.sheet.full { justify-content: center; align-items: center; background: rgba(5, 10, 8, .96); }
 .full-inner { width: min(100vw, 460px); max-height: 100dvh; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .full-img { width: min(72vw, 320px); align-self: center; border-radius: 12px; touch-action: none; transition: transform .15s; }
 .nav-hint { text-align: center; font-size: 11px; margin: -4px 0 0; }
@@ -230,3 +235,10 @@ button { font: inherit; color: inherit; }
 .life .float { top: -2px; left: 110%; transform: none; }
 @keyframes float-up { from { opacity: 0; margin-top: 8px; } 15% { opacity: 1; } to { opacity: 1; margin-top: -14px; } }
 .foot.handoff { gap: 6px; } .foot.handoff .btn { padding: 9px 10px; }
+.thumbs { display: flex; justify-content: center; align-items: center; gap: 4px; }
+.thumb-wrap { display: flex; align-items: center; gap: 4px; }
+.thumb { height: 64px; border-radius: 4px; opacity: .6; cursor: pointer; }
+.thumb.on { opacity: 1; box-shadow: 0 0 0 2px var(--gold); }
+.thumb-link { font-size: 12px; }
+.linked { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.linkbtn { color: var(--ink); }

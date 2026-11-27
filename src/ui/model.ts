@@ -99,33 +99,38 @@ export interface Permanent {
   blocking: boolean;
   /** A creature with summoning sickness (302.6): it can't attack or use {T} abilities yet. */
   sick: boolean;
-  /** Auras attached to it, tucked behind. */
-  auras: { id: ObjectId; image: string; controller: PlayerId }[];
-  /** For Equipment: what it is attached to. */
-  attachedTo?: string;
+  controller: PlayerId;
+  /** Auras and Equipment attached to it, drawn to its left, linked (whoever controls them). */
+  attached: Permanent[];
 }
+
+function permanentOf(s: GameState, id: ObjectId): Permanent {
+  const o = s.objects[id]!;
+  const c = characteristics(s, o);
+  const printed = s.setup.cards[o.card]!;
+  const creature = c.types.includes('Creature');
+  const sum = c.power + c.toughness, base = (printed.power ?? 0) + (printed.toughness ?? 0);
+  return {
+    id, name: c.name, image: imageOf(s, id), tapped: o.tapped, controller: o.controller,
+    ...(creature ? { pt: { power: c.power, toughness: c.toughness, up: sum > base, down: sum < base } } : {}),
+    damage: o.damage, counters: Object.entries(o.counters).filter(([, n]) => n > 0),
+    attacking: o.attacking !== undefined, blocking: !!o.blocking?.length, sick: creature && summoningSick(s, o),
+    attached: s.zones.battlefield.filter((a) => s.objects[a]!.attachedTo === id).map((a) => permanentOf(s, a)),
+  };
+}
+
+/** Whether a permanent is attached to something on the battlefield: it is drawn with that, not on its own. */
+const attachedToSomething = (s: GameState, o: GameObject) => !!o.attachedTo && s.objects[o.attachedTo]?.zone === 'battlefield';
 
 /** A player's battlefield row: creatures and other non-land permanents; earthbent lands move here while creatures. */
 export function battlefieldRow(s: GameState, p: PlayerId): Permanent[] {
   const out: Permanent[] = [];
   for (const id of s.zones.battlefield) {
     const o = s.objects[id]!;
-    const c = characteristics(s, o);
     if (o.controller !== p) continue;
     if (isLand(s, o) && !isCreature(s, o)) continue;
-    if (c.subtypes.includes('Aura') && o.attachedTo && s.objects[o.attachedTo]) continue; // drawn with what it enchants
-    const printed = s.setup.cards[o.card]!;
-    const creature = c.types.includes('Creature');
-    const sum = c.power + c.toughness, base = (printed.power ?? 0) + (printed.toughness ?? 0);
-    out.push({
-      id, name: c.name, image: imageOf(s, id), tapped: o.tapped,
-      ...(creature ? { pt: { power: c.power, toughness: c.toughness, up: sum > base, down: sum < base } } : {}),
-      damage: o.damage, counters: Object.entries(o.counters).filter(([, n]) => n > 0),
-      attacking: o.attacking !== undefined, blocking: !!o.blocking?.length, sick: creature && summoningSick(s, o),
-      auras: s.zones.battlefield.filter((a) => s.objects[a]!.attachedTo === id && characteristics(s, s.objects[a]!).subtypes.includes('Aura'))
-        .map((a) => ({ id: a, image: imageOf(s, a), controller: s.objects[a]!.controller })),
-      ...(o.attachedTo && s.objects[o.attachedTo] ? { attachedTo: nameOf(s, o.attachedTo) } : {}),
-    });
+    if (attachedToSomething(s, o)) continue; // drawn with what it's attached to
+    out.push(permanentOf(s, id));
   }
   return out;
 }
@@ -221,11 +226,13 @@ export function siblings(s: GameState, id: ObjectId, shownHand: PlayerId | null)
   if (!o) return [];
   if (o.zone === 'stack') return stackItems(s).map((i) => i.id);
   if (o.zone === 'battlefield') {
-    const row = battlefieldRow(s, o.controller);
-    if (row.some((p) => p.id === id)) return row.map((p) => p.id);
+    // In a row, a card's attachments come just before it, as drawn.
+    const host = o.attachedTo && s.objects[o.attachedTo] ? s.objects[o.attachedTo]! : o;
+    const row = battlefieldRow(s, host.controller).flatMap((p) => [...p.attached.map((a) => a.id), p.id]);
+    if (row.includes(id)) return row;
     const lands = landsStrip(s, o.controller).chips.flatMap((c) => c.ids);
     if (lands.includes(id)) return lands;
-    return [id]; // an Aura tucked behind what it enchants
+    return [id];
   }
   const [p, zone] = o.zone.split('.') as [PlayerId, string];
   if (zone === 'hand') return p === shownHand ? [...s.zones[o.zone]] : [];
