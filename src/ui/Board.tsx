@@ -168,12 +168,13 @@ function Band({ s, lit, marks, h, children }: { s: GameState; lit: boolean; mark
 
 /** The hand: a sideways drag scrolls; a drag up or down lifts a card to cast it; a tap opens it. */
 function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Marks; h: BoardHandlers; onLift: (lifted: boolean) => void }) {
-  const drag = useRef<{ id: ObjectId; x: number; y: number; lifted: boolean } | null>(null);
+  // The pointer's last press in the hand: `down` while pressed, `lifted` once it became a drag.
+  const drag = useRef<{ id: ObjectId; x: number; y: number; lifted: boolean; down: boolean } | null>(null);
   const [ghost, setGhost] = useState<{ id: ObjectId; x: number; y: number } | null>(null);
-  const down = (id: ObjectId) => (e: PointerEvent) => { drag.current = { id, x: e.clientX, y: e.clientY, lifted: false }; };
+  const down = (id: ObjectId) => (e: PointerEvent) => { drag.current = { id, x: e.clientX, y: e.clientY, lifted: false, down: true }; };
   const move = (e: PointerEvent) => {
     const d = drag.current;
-    if (!d) return;
+    if (!d?.down) return;
     if (!d.lifted && Math.abs(e.clientY - d.y) > 14 && Math.abs(e.clientY - d.y) > Math.abs(e.clientX - d.x)) {
       d.lifted = true;
       (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -183,14 +184,20 @@ function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Ma
   };
   const up = (e: PointerEvent) => {
     const d = drag.current;
-    drag.current = null;
-    if (!d) return;
-    if (!d.lifted) { if (Math.abs(e.clientX - d.x) < 8) h.onCard(d.id); return; }
+    if (!d?.down) return;
+    d.down = false;
+    if (!d.lifted) return; // a tap: handled on its click (below)
     setGhost(null);
     onLift(false);
     const el = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-target]');
     const t = el?.getAttribute('data-target');
     h.onDrop(d.id, t && t !== 'cast' ? t : null);
+  };
+  // A tap opens the card on its click, not on pointerup: opened earlier, the full view would be under
+  // the finger when the browser delivers the tap's click, which would then close it or press Cast.
+  const tap = (id: ObjectId) => (e: MouseEvent) => {
+    const d = drag.current;
+    if (d && d.id === id && !d.lifted && Math.abs(e.clientX - d.x) < 8) h.onCard(id);
   };
   const cancel = () => { if (drag.current?.lifted) { setGhost(null); onLift(false); } drag.current = null; };
   const ids = s.zones[`${p}.hand`];
@@ -202,7 +209,7 @@ function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Ma
         const pick = marks.selectable.has(id);
         const cls = ['card', marks.fresh.has(id) ? 'fresh' : '', marks.glow.has(id) ? 'can' : 'no', pick ? 'pickable' : '', marks.selected.has(id) ? 'picked' : '', ghost?.id === id ? 'lifting' : ''].filter(Boolean).join(' ');
         return (
-          <div key={id} class={cls} style={{ marginLeft: `${-overlap}px` }} data-testid={`handcard-${s.setup.cards[s.objects[id]!.card]!.name}`} onPointerDown={down(id)}>
+          <div key={id} class={cls} style={{ marginLeft: `${-overlap}px` }} data-testid={`handcard-${s.setup.cards[s.objects[id]!.card]!.name}`} onPointerDown={down(id)} onClick={tap(id)}>
             <img src={imageOf(s, id)} alt={s.setup.cards[s.objects[id]!.card]!.name} draggable={false} />
             {marks.fresh.has(id) && <span class="new-tab">NEW</span>}
           </div>
