@@ -243,4 +243,9 @@ button { font: inherit; color: inherit; }
 .thumb-link { font-size: 12px; }
 .linked { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .linkbtn { color: var(--ink); }
-.btn.undo-other { background: rgba(var(--tint), .85); color: #fff; border-color: var(--role); white-space: normal; line-height: 1.1; max-width: 120px; font-size: 12px; }
+.btn.undo-other { background: rgba(var(--tint), .85); color: #fff; border-color: var(--role); white-space: normal; max-width: 130px; }
+/* Icon buttons in the footer: undo, › pass, » pass ahead. */
+.foot .btn { min-width: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.foot .btn[data-testid$="pass"], .foot .btn[data-testid$="pass-ahead"] { font-size: 24px; line-height: 1; padding-top: 5px; padding-bottom: 7px; }
+.foot .icon { flex: none; }
+.undo-who { font-size: 11px; line-height: 1.1; text-align: left; }

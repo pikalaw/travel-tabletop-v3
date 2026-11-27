@@ -45,6 +45,13 @@ function asking(s: GameState): string {
   }
 }
 
+/** The undo icon: an arrow curving back. */
+const UndoIcon = () => (
+  <svg class="icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </svg>
+);
+
 /** Words for a decision Undo would take back: "Undo Claire's block". */
 const UNDO_WORDS: Partial<Record<Choice['kind'], string>> = { cast: 'cast', play: 'land', activate: 'ability', attack: 'attack', block: 'block', pass: 'pass', keep: 'keep', mulligan: 'mulligan', targets: 'targets', order: 'order', discard: 'discard' };
 
@@ -258,7 +265,9 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const askUndo = () => { if (lastManual && lastManual.player !== me) setMenu('undo'); else doUndo(); };
   // Undo that would take back the other player's decision says so, in their colour.
   const undoOther = lastManual && d && lastManual.player !== d.player ? lastManual : null;
-  const undoLabel = undoOther ? `Undo ${playerName(s, undoOther.player)}'s ${UNDO_WORDS[undoOther.choice.kind] ?? 'move'}` : 'Undo';
+  const undoWords = undoOther ? `Undo ${playerName(s, undoOther.player)}'s ${UNDO_WORDS[undoOther.choice.kind] ?? 'move'}` : 'Undo';
+  // The undo icon; taking back the other player's decision adds whose and what ("Claire's block").
+  const undoLabel = <><UndoIcon />{undoOther && <span class="undo-who">{undoWords.replace(/^Undo /, '')}</span>}</>;
   const undoClass = `btn ${undoOther ? `undo-other ${undoOther.player}` : ''}`;
 
   // ----- the prompt panel and the footer
@@ -457,9 +466,9 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       return (
         <div class={`foot handoff ${actor}`} data-testid="handoff">
           <span class="say"><b class={`who ${actor}`}>{playerName(s, actor)} to act</b>: {asking(s)}</span>
-          {canUndo(session.game) && <button class={undoClass} onClick={askUndo} data-tip="Take back the last decision. Taking back the other player's asks first." data-testid="bar-undo">{undoLabel}</button>}
+          {canUndo(session.game) && <button class={undoClass} onClick={askUndo} aria-label={undoWords} data-tip="Take back the last decision. Taking back the other player's asks first." data-testid="bar-undo">{undoLabel}</button>}
           {d.kind === 'priority' && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="bar-pass-ahead">»</button>}
-          {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-tip="Pass without showing your hand. Nothing flips." data-testid="bar-pass">Pass</button>}
+          {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-tip="Pass without showing your hand. Nothing flips." aria-label="Pass" data-testid="bar-pass">›</button>}
           <button class="btn primary" onClick={takeLook} data-tip="Take the phone and show your hand, to act." data-testid="look">Look</button>
         </div>
       );
@@ -467,10 +476,10 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
     return (
       <div class={`foot ${d.player}`}>
         <span class="say">{d.kind === 'priority' && !intent ? <>Pass: <b>{passMeaning(s)}</b></> : <b>{playerName(s, d.player)}</b>}</span>
-        <button class={undoClass} disabled={!canUndo(session.game)} onClick={askUndo} data-tip="Take back the last decision, with the automatic passes after it." data-testid="undo">{undoLabel}</button>
+        <button class={undoClass} disabled={!canUndo(session.game)} onClick={askUndo} aria-label={undoWords} data-tip="Take back the last decision, with the automatic passes after it." data-testid="undo">{undoLabel}</button>
         <button class="btn" onClick={() => setMenu('menu')} data-tip="Log, redo, hide your hand, resign, or leave the game." data-testid="menu">☰</button>
         {d.kind === 'priority' && !intent && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="pass-ahead">»</button>}
-        {d.kind === 'priority' && !intent && <button class="btn primary" onClick={() => send({ kind: 'pass' })} data-tip={`Pass priority: ${passMeaning(s)}.`} data-testid="pass">Pass</button>}
+        {d.kind === 'priority' && !intent && <button class="btn primary" onClick={() => send({ kind: 'pass' })} data-tip={`Pass priority: ${passMeaning(s)}.`} aria-label="Pass" data-testid="pass">›</button>}
       </div>
     );
   }
