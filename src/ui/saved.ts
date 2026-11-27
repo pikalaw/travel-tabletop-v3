@@ -41,7 +41,9 @@ export function load(): { spec: GameSpec; session: Session } | null {
     if (!raw) return null;
     const saved = JSON.parse(raw) as Saved;
     const game = restore({ setup: setupOf(saved.spec), seed: saved.spec.seed, choices: saved.choices });
-    return { spec: saved.spec, session: { game: { ...game, ...(saved.ahead ? { ahead: saved.ahead } : {}) }, ...(saved.seen ? { seen: saved.seen } : {}), facing: saved.facing, revealed: false } };
+    // Announcements saved by builds before they remembered the stack are dropped.
+    const ahead = Object.fromEntries(Object.entries(saved.ahead ?? {}).filter(([, a]) => Array.isArray(a?.stack)));
+    return { spec: saved.spec, session: { game: { ...game, ahead }, ...(saved.seen ? { seen: saved.seen } : {}), facing: saved.facing, revealed: false } };
   } catch {
     return null;
   }

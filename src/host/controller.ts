@@ -5,7 +5,7 @@
  * keeps the decision log that undo, redo and replay work from.
  */
 import { answer, legalActions, start } from '../engine/engine';
-import type { Choice, GameSetup, GameState, PlayerId, Refusal } from '../engine/types';
+import type { Choice, GameSetup, GameState, ObjectId, PlayerId, Refusal } from '../engine/types';
 import { other } from '../engine/types';
 
 export interface LoggedChoice { choice: Choice; player: PlayerId; auto: boolean }
@@ -13,8 +13,12 @@ export interface LoggedChoice { choice: Choice; player: PlayerId; auto: boolean 
 /** Everything needed to rebuild a game exactly. */
 export interface GameRecord { setup: GameSetup; seed: number; choices: LoggedChoice[] }
 
-/** "Pass this combat" or "Pass until end of turn" (PRD, "Passing ahead, out loud"): public, announced on the board. */
-export interface PassAhead { until: 'combat' | 'turn'; turn: number }
+/**
+ * "Pass this combat" or "Pass until end of turn" (PRD, "Passing ahead, out loud"): public, announced
+ * on the board. It ends early when the other player puts something on the stack: `stack` is what
+ * was there when it was announced.
+ */
+export interface PassAhead { until: 'combat' | 'turn'; turn: number; stack: ObjectId[] }
 
 export interface Game {
   record: GameRecord;
@@ -77,6 +81,19 @@ export function stillPassing(s: GameState, a: PassAhead | undefined): boolean {
   return ['upkeep', 'draw', 'main1', ...COMBAT_STEPS].includes(s.step);
 }
 
+/**
+ * A player passing ahead gets their window again once the other player puts a spell, an ability
+ * or a trigger on the stack: what they said before it doesn't cover it. Their own items don't count.
+ */
+function endIfAnswered(g: Game, p: PlayerId): Game {
+  const a = g.ahead?.[p];
+  if (!a) return g;
+  const s = current(g);
+  if (!s.zones.stack.some((id) => !a.stack.includes(id) && s.objects[id]!.controller !== p)) return g;
+  const { [p]: _ended, ...rest } = g.ahead!;
+  return { ...g, ahead: rest };
+}
+
 /** Passes for players wherever they have no stop or are passing ahead; `hold` keeps one player's next priority (they held it while casting). */
 function autoPass(g: Game, hold?: PlayerId): Game {
   for (;;) {
@@ -84,6 +101,7 @@ function autoPass(g: Game, hold?: PlayerId): Game {
     const d = s.decision;
     if (!d || d.kind !== 'priority') return g;
     if (hold === d.player) return g;
+    g = endIfAnswered(g, d.player);
     if (stopsHere(s, d.player) && !stillPassing(s, g.ahead?.[d.player]) && !nothingToDo(s, d.player)) return g;
     const next = push(g, { choice: { kind: 'pass' }, player: d.player, auto: true });
     if ('refused' in next) throw new Error(`the engine refused an automatic pass: ${next.refused}`);
@@ -110,7 +128,7 @@ export function passAhead(g: Game, until: PassAhead['until']): Game | Refusal {
   const s = current(g);
   const d = s.decision;
   if (d?.kind !== 'priority') return { refused: 'Only with priority' };
-  return submit({ ...g, ahead: { ...g.ahead, [d.player]: { until, turn: s.turn } } }, { kind: 'pass' });
+  return submit({ ...g, ahead: { ...g.ahead, [d.player]: { until, turn: s.turn, stack: [...s.zones.stack] } } }, { kind: 'pass' });
 }
 
 /** Index of the last choice a player made (not an automatic pass), or -1. */

@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { legalActions } from '../src/engine/engine';
 import { current, newGame, passAhead, submit, type Game } from '../src/host/controller';
-import { deck, setup } from './engine-support';
+import { ABILITY_CARDS } from './ability-cards';
+import { deck, place, setup } from './engine-support';
 
 function ok(g: Game | { refused: string }): Game {
   if ('refused' in g) throw new Error(g.refused);
@@ -44,5 +45,24 @@ describe('the controller', () => {
     const held = current(ok(submit(g, cast, { hold: true })));
     expect(held.decision).toEqual({ kind: 'priority', player: 'p1' });
     expect(held.zones.stack).toHaveLength(1);
+  });
+
+  it('an announcement ends when the other player puts something on the stack', () => {
+    // p1 passes until end of turn in their main phase; p2, with a Mountain and a Shock, casts it in p1's end step.
+    const g0 = atMain();
+    let s = structuredClone(current(g0));
+    s.setup = { ...s.setup, cards: { ...s.setup.cards, ...ABILITY_CARDS } };
+    let shock: string[];
+    [s] = place(s, 'p2', ['mountain']);
+    [s, shock] = place(s, 'p2', ['shock'], 'hand');
+    let g = ok(passAhead({ ...g0, states: [...g0.states.slice(0, -1), s] }, 'turn'));
+    expect(current(g).step).toBe('end');
+    expect(current(g).decision).toEqual({ kind: 'priority', player: 'p2' });
+    expect(g.ahead?.p1).toBeDefined();
+    g = ok(submit(g, { kind: 'cast', object: shock[0]!, targets: [['p1']] }));
+    // p1 gets the window to respond, and the announcement is over
+    expect(current(g).decision).toEqual({ kind: 'priority', player: 'p1' });
+    expect(current(g).zones.stack).toHaveLength(1);
+    expect(g.ahead?.p1).toBeUndefined();
   });
 });
