@@ -108,9 +108,10 @@ test('a long press on any card opens its full view; the log icon opens and close
   await longPress(page, page.getByTestId('lands-p1').locator('.chip').first());
   await expect(page.getByTestId('full-img')).toHaveAttribute('alt', 'Mountain');
   await page.getByTestId('close-view').tap();
-  // the log: one icon opens and closes it
+  // the log: opened from the menu, closed by its ✕ or the menu
+  await page.getByTestId('menu').tap();
   await page.getByTestId('log-button').tap();
   await expect(page.getByTestId('log')).toContainText('Player 1 plays Mountain');
-  await page.getByTestId('log-button').tap();
+  await page.getByTestId('close-log').tap();
   await expect(page.getByTestId('log')).toHaveCount(0);
 });

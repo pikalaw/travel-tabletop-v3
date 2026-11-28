@@ -191,6 +191,7 @@ test('a cast paid with lands goes straight on the stack, and Undo on the hand-of
   await expect(page.getByTestId('confirm')).toHaveCount(0);
   await expect(page.getByTestId('handoff')).toBeVisible();
   await expect(page.getByTestId('stack-1')).toContainText(name!);
+  await expect(page.getByTestId('handoff').getByTestId('menu')).toBeVisible(); // the menu is on every footer
   await page.getByTestId('bar-undo').click();
   await expect(page.getByTestId('handoff')).toHaveCount(0);
   await expect(page.locator('.hand .card')).toHaveCount(hand);
@@ -211,6 +212,7 @@ test('a new turn announces itself, and the log opens each turn with a banner', a
   await expect(page.getByTestId('turn-flash')).toContainText('Turn 2');
   await expect(page.getByTestId('turn-flash')).toContainText('Claire');
   await expect(page.getByTestId('turn-flash')).toHaveCount(0, { timeout: 4000 }); // it fades by itself
+  await page.getByTestId('menu').click();
   await page.getByTestId('log-button').click();
   await expect(page.locator('.log .turn-head')).toContainText(['Mulligans', 'Turn 2 · Claire']); // turn 1 had no events: Lawrence played first and did nothing
 });

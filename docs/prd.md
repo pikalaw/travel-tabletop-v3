@@ -223,7 +223,7 @@ The battlefields get the full width of the screen. Nothing is dropped on a pile 
 | Your lands strip       | As the opponent's                                                                                                                                                                                                                                                                                                                                                       |
 | Your stats bar         | As the opponent's                                                                                                                                                                                                                                                                                                                                                       |
 | Your hand              | Folded away while blinded or during a hand-off; castable cards glow gold, the rest are dimmed                                                                                                                                                                                                                                                                           |
-| Footer                 | The priority and prompt bar: what passing does ("Pass: combat damage"), Pass, and during a hand-off the hand-off bar with Undo, » (pass ahead), Pass and Look                                                                                                                                                                                                           |
+| Footer                 | The priority and prompt bar: what passing does ("Pass: combat damage"), Pass, and during a hand-off the hand-off bar with the menu, Undo, » (pass ahead), Pass and Look. Every footer has the menu (☰), the hand-off bar and the game's end included                                                                                                                    |
 
 **The pile icons** open their sheet on a tap, as v2's pile viewers do. An icon glows when something inside is legal for you to use now (a flashback card in your graveyard, an airbended card in exile). When an effect targets a card in one of them, its sheet opens by itself with the legal choices outlined.
 
@@ -313,7 +313,7 @@ A card that can't be cast shows no glow; the full view says why ("needs {R}{R}: 
 - The full-screen card view, with its gestures and its scroll-to-shrink.
 - Rulings.
 - Card text with abilities.
-- The log, behind a log icon on the footer and the hand-off bar: the same icon opens and closes it. Lines since a player last tapped Look are marked, which replaces v2's "while you were away" list, and each turn opens with a banner in its player's colour ("Turn 6 · Claire"), as in v2. A new turn also announces itself on the board: "Turn 6 · Claire" sweeps across in her colour for under two seconds, without stopping play.
+- The log, in the menu; its ✕ or the menu closes it. Lines since a player last tapped Look are marked, which replaces v2's "while you were away" list, and each turn opens with a banner in its player's colour ("Turn 6 · Claire"), as in v2. A new turn also announces itself on the board: "Turn 6 · Claire" sweeps across in her colour for under two seconds, without stopping play.
 - Long-press tips.
 - Backups.
 - The finished-games list.

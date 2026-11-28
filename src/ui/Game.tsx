@@ -46,24 +46,18 @@ function asking(s: GameState): string {
   }
 }
 
-/** The log icon: lines of text. */
-const LogIcon = () => (
-  <svg class="icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-    <path d="M8 6h12M8 12h12M8 18h8" /><circle cx="4" cy="6" r="1" fill="currentColor" /><circle cx="4" cy="12" r="1" fill="currentColor" /><circle cx="4" cy="18" r="1" fill="currentColor" />
-  </svg>
-);
-
 /**
  * The log (v2's log): every public event, numbered by turn, newest last and in view. Lines since
  * the player last acted are marked, which is what "while you were away" used to show.
  */
-function LogPanel({ s, since }: { s: GameState; since: number | null }) {
+function LogPanel({ s, since, onClose }: { s: GameState; since: number | null; onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => { if (panel.current) panel.current.scrollTop = panel.current.scrollHeight; }, [s.events.length]);
   const events = s.events.slice(-400);
   const offset = s.events.length - events.length;
   return (
     <div class="log-panel" data-testid="log" ref={panel}>
+      <button class="log-close" onClick={onClose} aria-label="Close the log" data-testid="close-log">✕</button>
       <ol class="log">
         {events.map((e, i) => {
           // A banner in the turn player's colour opens each turn, as in v2.
@@ -349,8 +343,9 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const undoWords = undoOther ? `Undo ${playerName(s, undoOther.player)}'s ${UNDO_WORDS[undoOther.choice.kind] ?? 'move'}` : 'Undo';
   // The undo icon; taking back the other player's decision adds whose and what ("Claire's block").
   const undoLabel = <><UndoIcon />{undoOther && <span class="undo-who">{undoWords.replace(/^Undo /, '')}</span>}</>;
-  const logButton = (
-    <button class={`btn ${logOpen ? 'on' : ''}`} onClick={() => setLogOpen((o) => !o)} aria-label="Log" data-tip="Open or close the log: every event, newest last; what happened since you last looked is marked." data-testid="log-button"><LogIcon /></button>
+  // The menu is on every footer: the hand-off bar, the player's own footer and the game's end.
+  const menuButton = (
+    <button class="btn" onClick={() => setMenu('menu')} aria-label="Menu" data-tip="The log, redo, hide your hand, resign, or leave the game." data-testid="menu">☰</button>
   );
   const undoClass = `btn ${undoOther ? `undo-other ${undoOther.player}` : ''}`;
 
@@ -541,6 +536,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       return (
         <div class="foot">
           <span class="say"><b>{r?.winner ? `${playerName(s, r.winner)} wins` : 'A draw'}</b> · {r?.reason}</span>
+          {menuButton}
           <button class="btn" onClick={() => onRematch(r?.winner ? other(r.winner) : 'p1')} data-tip="Play again with the same decks; the loser chooses to play or draw." data-testid="rematch">Rematch</button>
           <button class="btn primary" onClick={onExit} data-testid="home">Home</button>
         </div>
@@ -550,7 +546,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       return (
         <div class={`foot handoff ${actor}`} data-testid="handoff">
           <span class="say"><b class={`who ${actor}`}>{playerName(s, actor)} to act</b>: {asking(s)}</span>
-          {logButton}
+          {menuButton}
           {canUndo(session.game) && <button class={undoClass} onClick={askUndo} aria-label={undoWords} data-tip="Take back the last decision. Taking back the other player's asks first." data-testid="bar-undo">{undoLabel}</button>}
           {d.kind === 'priority' && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="bar-pass-ahead">»</button>}
           {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-tip="Pass without showing your hand. Nothing flips." aria-label="Pass" data-testid="bar-pass">›</button>}
@@ -561,9 +557,8 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
     return (
       <div class={`foot ${d.player}`}>
         <span class="say">{d.kind === 'priority' && !intent ? <>Pass: <b>{passMeaning(s)}</b></> : <b>{playerName(s, d.player)}</b>}</span>
-        {logButton}
+        {menuButton}
         <button class={undoClass} disabled={!canUndo(session.game)} onClick={askUndo} aria-label={undoWords} data-tip="Take back the last decision, with the automatic passes after it." data-testid="undo">{undoLabel}</button>
-        <button class="btn" onClick={() => setMenu('menu')} data-tip="Log, redo, hide your hand, resign, or leave the game." data-testid="menu">☰</button>
         {d.kind === 'priority' && !intent && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="pass-ahead">»</button>}
         {d.kind === 'priority' && !intent && <button class="btn primary" onClick={() => send({ kind: 'pass' })} data-tip={`Pass priority: ${passMeaning(s)}.`} aria-label="Pass" data-testid="pass">›</button>}
       </div>
@@ -616,8 +611,9 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       {menu === 'menu' && (
         <Sheet title="Menu" onClose={() => setMenu(null)}>
           <div class="menu">
+            <button class="btn" onClick={() => { setLogOpen((o) => !o); setMenu(null); }} data-testid="log-button">{logOpen ? 'Close the log' : 'Log'}</button>
             <button class="btn" disabled={!canRedo(session.game)} onClick={() => { setMenu(null); onChange(redoLast(session)); }}>Redo</button>
-            <button class="btn" onClick={() => { setFolded(true); setMenu(null); }}>Hide my hand</button>
+            {d && !off && <button class="btn" onClick={() => { setFolded(true); setMenu(null); }}>Hide my hand</button>}
             {d && <button class="btn" onClick={() => setMenu('resign')} data-testid="resign">Resign</button>}
             <button class="btn" onClick={onExit} data-testid="quit">Leave game (it stays saved)</button>
           </div>
@@ -645,7 +641,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
           </div>
         </Sheet>
       )}
-      {logOpen && <LogPanel s={s} since={since} />}
+      {logOpen && <LogPanel s={s} since={since} onClose={() => setLogOpen(false)} />}
       {menu === 'undo' && lastManual && (
         <Sheet title="Undo" onClose={() => setMenu(null)}>
           <p>Undo {playerName(s, lastManual.player)}'s {lastManual.choice.kind}?</p>
