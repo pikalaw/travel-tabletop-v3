@@ -19,7 +19,7 @@ import { checkTargets, hasTargets, isLegalTarget, legalTargets, onlyChoice } fro
 import { fire, triggeredAbility } from './triggers';
 import type { Choice, Decision, GameObject, GameSetup, GameState, ObjectId, PendingTrigger, PlayerId, Refusal, Step, Target, ZoneId } from './types';
 import { COLORS, PLAYERS, STEPS, other } from './types';
-import { addCounters, leaveBattlefield, putOntoBattlefield, tap } from './zones';
+import { addCounters, discardCard, leaveBattlefield, putOntoBattlefield, sacrifice, tap } from './zones';
 
 const HAND_SIZE = 7;
 const STARTING_LIFE = 20;
@@ -65,7 +65,25 @@ const sorcerySpeed = (s: GameState, p: PlayerId) =>
   s.active === p && (s.step === 'main1' || s.step === 'main2') && s.zones.stack.length === 0;
 
 /** "You may play that card this turn" (Zuko, Exiled Prince). */
-const playableFromExile = (s: GameState, p: PlayerId, o: GameObject) => o.zone === zoneOf(p, 'exile') && o.owner === p && o.playableTurn === s.turn;
+const playableFromExile = (s: GameState, p: PlayerId, o: GameObject) =>
+  (o.zone === zoneOf(p, 'exile') && o.owner === p && o.playableTurn === s.turn) || castableFromExile(s, p, o);
+
+/** Another player's exiled card `p` may cast (Hama, Fire Lord Ozai), while its permission lasts. */
+export function castableFromExile(s: GameState, p: PlayerId, o: GameObject): boolean {
+  const c = o.castableBy;
+  if (!c || c.player !== p || !o.zone.endsWith('.exile')) return false;
+  if (c.yourTurnOnly && s.active !== p) return false;
+  if (c.untilTurn !== undefined && s.turn > c.untilTurn) return false;
+  if (c.source && (s.objects[c.source]?.zone !== 'battlefield' || s.objects[c.source]!.controller !== p)) return false;
+  return true;
+}
+
+/** Playing one card of a "play one of those cards" group ends the others' permission. */
+function usedPermission(s: GameState, o: GameObject): void {
+  const g = o.castableBy?.group;
+  if (!g) return;
+  for (const x of Object.values(s.objects)) if (x.castableBy?.group === g) delete x.castableBy;
+}
 
 /** Why `p` can't play this land now, or null. */
 export function whyNotPlay(s: GameState, p: PlayerId, id: ObjectId): string | null {
@@ -120,7 +138,7 @@ function checkModes(s: GameState, id: ObjectId, modes?: number[]): string | null
  */
 export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Target[][], modes?: number[], x = 0, option?: number, sacrificing?: ObjectId[], discarding?: ObjectId[]): string | null {
   const o = s.objects[id];
-  const fromExile = !!o && o.zone === zoneOf(p, 'exile') && o.owner === p && (!!o.airbended || playableFromExile(s, p, o));
+  const fromExile = !!o && ((o.zone === zoneOf(p, 'exile') && o.owner === p && (!!o.airbended || playableFromExile(s, p, o))) || castableFromExile(s, p, o));
   if (!o || (o.zone !== zoneOf(p, 'hand') && !fromExile)) return 'Not in your hand';
   if (isType(s, o, 'Land')) return 'Lands are played, not cast';
   const spellDef = spellOf(s, id);
@@ -153,12 +171,14 @@ function costProblem(s: GameState, p: PlayerId, id: ObjectId, x: number, option?
   return costChoiceProblem(costChoices(s, p, castCost(s, id, option), id), sacrificing, discarding);
 }
 
-/** Creatures that could be tapped for a "tap an untapped creature you control" cost. */
-export function tapCandidates(s: GameState, p: PlayerId, a: ActivatedAbility): ObjectId[] {
-  const f = a.cost.tapAnother;
+/** Creatures that could be tapped for a "tap an untapped creature you control" cost, or to crew this Vehicle. */
+export function tapCandidates(s: GameState, p: PlayerId, a: ActivatedAbility, source?: ObjectId): ObjectId[] {
+  const f = a.cost.tapAnother ?? (a.cost.crew !== undefined ? {} : undefined);
   if (!f) return [];
-  return controlledBy(s, p).filter((o) => !o.tapped && isType(s, o, 'Creature') && matches(s, view(s), o, f, ctxFor(p, o.id))).map((o) => o.id);
+  return controlledBy(s, p).filter((o) => o.id !== source && !o.tapped && isType(s, o, 'Creature') && matches(s, view(s), o, f, ctxFor(p, o.id))).map((o) => o.id);
 }
+
+const powerOf = (s: GameState, ids: ObjectId[]) => ids.reduce((n, id) => n + characteristics(s, obj(s, id)).power, 0);
 
 /** Why `p` can't activate ability `index` of this permanent now, or null. With `targets`, also whether those are legal. */
 export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: number, targets?: Target[][], tapping?: ObjectId[], sacrificing?: ObjectId[], discarding?: ObjectId[]): string | null {
@@ -182,6 +202,12 @@ export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: n
     if (!can.length) return 'No untapped creature to tap';
     if (tapping && (tapping.length !== 1 || !can.includes(tapping[0]!))) return 'Choose an untapped creature you control to tap';
   }
+  if (a.cost.crew !== undefined) {
+    // Crew N (702.122): any untapped creatures, summoning-sick ones too, with total power N or more.
+    const can = tapCandidates(s, p, a, id);
+    if (powerOf(s, can) < a.cost.crew) return `Not enough untapped creatures to crew ${a.cost.crew}`;
+    if (tapping && (new Set(tapping).size !== tapping.length || tapping.some((t) => !can.includes(t)) || powerOf(s, tapping) < a.cost.crew)) return `Choose creatures with total power ${a.cost.crew} or more`;
+  }
   const chosenCost = costChoiceProblem(costChoices(s, p, a.cost, id), sacrificing, discarding);
   if (chosenCost) return chosenCost;
   // Mana for the cost comes from other sources when the ability taps this one.
@@ -201,7 +227,7 @@ export function legalActions(s: GameState): Choice[] {
     case 'mulligan': return [{ kind: 'keep' }, { kind: 'mulligan' }];
     case 'legend': return d.objects.map((keep) => ({ kind: 'legend', keep }));
     case 'may': case 'payOrElse': return [{ kind: 'yes' }, { kind: 'no' }];
-    case 'choose': return d.options.map((_, index) => ({ kind: 'option', index }));
+    case 'choose': return d.max !== undefined ? [{ kind: 'options', indices: [] }] : d.options.map((_, index) => ({ kind: 'option', index }));
     case 'castFree': return [{ kind: 'no' }, ...d.options.map((object): Choice => ({ kind: 'cast', object }))];
     case 'priority': {
       const p = d.player;
@@ -210,7 +236,7 @@ export function legalActions(s: GameState): Choice[] {
         if (!whyNotPlay(s, p, id)) out.push({ kind: 'play', object: id });
         if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
       }
-      for (const id of s.zones[zoneOf(p, 'exile')]) {
+      for (const id of [...s.zones['p1.exile'], ...s.zones['p2.exile']]) {
         if (!whyNotPlay(s, p, id)) out.push({ kind: 'play', object: id });
         if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
       }
@@ -330,7 +356,7 @@ function apply(s: GameState, d: Decision, c: Choice): string | null {
       if (c.kind !== 'discard') return wrong(d, c);
       const bad = checkCards(s, p, c.cards, d.count);
       if (bad) return bad;
-      for (const id of c.cards) { event(s, `${playerName(s, p)} discards ${nameOf(s, id)}`); move(s, id, zoneOf(p, 'graveyard')); }
+      for (const id of c.cards) discardCard(s, p, id);
       return null;
     }
     case 'legend': {
@@ -412,6 +438,14 @@ function apply(s: GameState, d: Decision, c: Choice): string | null {
       return null;
     }
     case 'choose': {
+      if (d.max !== undefined) {
+        if (c.kind !== 'options') return wrong(d, c);
+        const keys = c.indices.map((i) => d.exclusive?.[i]).filter(Boolean);
+        if (c.indices.length > d.max || new Set(c.indices).size !== c.indices.length || c.indices.some((i) => !d.options[i])) return `Choose up to ${d.max} different options`;
+        if (new Set(keys).size !== keys.length) return 'Those two are one mode: choose one of them';
+        continueResolving(s, c);
+        return null;
+      }
       if (c.kind !== 'option') return wrong(d, c);
       if (!Number.isInteger(c.index) || !d.options[c.index]) return 'Choose one of the options';
       continueResolving(s, c);
@@ -459,6 +493,7 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       const bad = whyNotPlay(s, p, c.object);
       if (bad) return bad;
       event(s, `${playerName(s, p)} plays ${nameOf(s, c.object)}`);
+      usedPermission(s, obj(s, c.object));
       const land = putOntoBattlefield(s, c.object, p);
       s.players[p].landsPlayed++;
       // "As it enters, choose a color": asked straight away, before anyone could use it.
@@ -483,6 +518,7 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       const sources = spellPayment(s, p, c.object, x, c.cost)!.sources;
       pay(s, p, sources);
       payCostChoices(s, p, choices, c.sacrificing, c.discarding);
+      usedPermission(s, obj(s, c.object));
       if (isType(s, obj(s, c.object), 'Creature')) s.turnLog.creatureSpells[p]++;
       const spell = move(s, c.object, 'stack', { controller: p });
       spell.targets = c.targets ?? [];
@@ -502,7 +538,7 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       const tapping = c.tapping ?? (a && tapCandidates(s, p, a).length === 1 ? tapCandidates(s, p, a) : undefined);
       const bad = whyNotActivate(s, p, c.object, c.ability, c.targets ?? [], tapping, c.sacrificing, c.discarding);
       if (bad) return specs.length && !c.targets ? 'Choose targets' : bad;
-      if (a?.cost.tapAnother && !tapping) return 'Choose a creature to tap';
+      if ((a?.cost.tapAnother || a?.cost.crew !== undefined) && !tapping) return a?.cost.crew !== undefined ? 'Choose creatures to crew it' : 'Choose a creature to tap';
       const missing = a ? costChoiceMissing(costChoices(s, p, a.cost, c.object), c.sacrificing, c.discarding) : null;
       if (missing) return missing === 'sacrifice' ? 'Choose what to sacrifice' : 'Choose what to discard';
       return activate(s, p, c.object, c.ability, c.targets ?? [], tapping ?? [], c.sacrificing, c.discarding);
@@ -540,15 +576,15 @@ function activate(s: GameState, p: PlayerId, id: ObjectId, index: number, target
     s.resolving = { object: id, effects: a.effects, pc: 0, controller: p, source: id, targets, specs: [] };
     runEffects(s);
     s.resolving = null;
-    if (a.cost.sacrificeSelf) leaveBattlefield(s, [id], 'graveyard');
+    if (a.cost.sacrificeSelf) sacrifice(s, [id], p);
     return null;
   }
   const ab = createObject(s, card, p, 'stack');
   const attachedTo = obj(s, id).attachedTo;
   ab.ability = { source: id, sourceName, kind: 'activated', index, ...(attachedTo ? { attachedTo } : {}) };
   ab.targets = targets;
-  if (a.cost.sacrificeSelf) leaveBattlefield(s, [id], 'graveyard');
-  if (a.cost.discardSelf) { event(s, `${playerName(s, p)} discards ${sourceName}`); move(s, id, zoneOf(p, 'graveyard')); }
+  if (a.cost.sacrificeSelf) sacrifice(s, [id], p);
+  if (a.cost.discardSelf) discardCard(s, p, id);
   event(s, `${playerName(s, p)} activates ${sourceName}: ${a.text}${describeTargets(s, targets)}`);
   targeted(s, ab.id);
   s.passes = 0;

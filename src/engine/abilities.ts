@@ -28,6 +28,8 @@ export interface Filter {
   self?: boolean;            // the ability's source itself ("if ~ is tapped")
   attached?: boolean;        // what the source Aura or Equipment is attached to ("enchanted creature")
   tapped?: boolean;
+  /** Was dealt damage this turn (damage stays marked until cleanup). */
+  damaged?: boolean;
   attacking?: boolean;
   blocking?: boolean;
   keyword?: string;
@@ -62,7 +64,8 @@ export type ObjectRef =
   | 'chosen'                         // the objects this resolution's last choice picked ("sacrifice a land")
   | 'thisCard'                       // the source card in its new zone after it left the battlefield ("return this card")
   | 'eventSource'                    // the spell or ability a trigger's event came from (ward: "that spell")
-  | { ids: string[] };               // these objects, fixed when an effect made them ("return those cards")
+  | { ids: string[] }                // these objects, fixed when an effect made them ("return those cards")
+  | { topOf: 'you' | 'opponent' };   // the top card of a library ("the top card of each opponent's library")
 
 // ----- Numbers ---------------------------------------------------------------------------------
 
@@ -145,6 +148,10 @@ export interface Cost {
   sacrificeCount?: Amount;
   /** "Discard a card": the payer chooses which. */
   discard?: number;
+  /** Crew N (702.122): tap untapped creatures you control with total power N or more. */
+  crew?: number;
+  /** "Tap two untapped Foods you control" (a mana ability's cost): how many, matching what. */
+  tapMany?: { n: number; filter: Filter };
 }
 
 /** One mode of a modal spell (700.2): its own targets and effects, target indices local to it. */
@@ -206,6 +213,11 @@ export type TriggerEvent =
   | { toLibrary: true }
   /** A reflexive trigger's (603.12): it never matches an event; its effect puts it on the stack. */
   | { reflexive: true }
+  /** "Whenever you sacrifice a Food / another permanent": by the ability's controller. */
+  | { sacrificed: Filter }
+  /** "Whenever an opponent discards a card" (one trigger each), "… mills one or more cards" (one each mill). */
+  | { discards: 'opponent' | 'you' }
+  | { mills: 'opponent' | 'you' }
   /** A Saga's chapter ability: the `chapter` it is (714.2b). */
   | { lore: true };
 
@@ -251,6 +263,8 @@ export interface Continuous {
   addsMana?: { makes: (Color | 'C')[]; n?: number };
   /** "Lesson spells you cast cost {1} less" (612, 601.2f): spells matching the filter, from wherever they're cast. */
   reducesCost?: { spells: Filter; by: number };
+  /** Keywords lost ("lose hexproof and indestructible"), after those added (layer 6). */
+  removeKeywords?: string[];
   /** "You may cast the first creature spell you cast each turn as though it had flash". */
   firstCreatureFlash?: boolean;
   /** Earthbent: when this land dies or is exiled, it returns to the battlefield tapped (701.65). */

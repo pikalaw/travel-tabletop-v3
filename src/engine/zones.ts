@@ -22,9 +22,11 @@ export function putOntoBattlefield(s: GameState, id: ObjectId, controller: Playe
 }
 
 /** Creates a token on the battlefield (111.1). */
-export function createToken(s: GameState, card: string, controller: PlayerId, opts: { tapped?: boolean } = {}): ObjectId {
+export function createToken(s: GameState, card: string, controller: PlayerId, opts: { tapped?: boolean; copy?: boolean } = {}): ObjectId {
   if (!s.setup.cards[card]) throw new Error(`no token data for ${card}`);
-  return entered(s, createObject(s, card, controller, 'battlefield'), opts);
+  const o = createObject(s, card, controller, 'battlefield');
+  if (opts.copy) o.tokenCopy = true;
+  return entered(s, o, opts);
 }
 
 /** How a permanent enters: tapped, attached, or with extra counters (Animal Attendant's mana). */
@@ -47,7 +49,21 @@ function entered(s: GameState, o: GameObject, opts: EnterOptions): ObjectId {
   return o.id;
 }
 
-const isToken = (s: GameState, id: ObjectId) => !!s.setup.cards[s.objects[id]!.card]?.token;
+const isToken = (s: GameState, id: ObjectId) => !!s.setup.cards[s.objects[id]!.card]?.token || !!s.objects[id]!.tokenCopy;
+
+/** A player discards a card (701.9): to the graveyard, reported for "whenever … discards". Returns its new id. */
+export function discardCard(s: GameState, p: PlayerId, id: ObjectId): ObjectId {
+  event(s, `${s.setup.players[p].name} discards ${view(s)(s.objects[id]!).name}`);
+  const n = move(s, id, zoneOf(p, 'graveyard'));
+  fire(s, { kind: 'discarded', object: n.id, player: p });
+  return n.id;
+}
+
+/** A player sacrifices permanents (701.21): "whenever you sacrifice" triggers, then they go to the graveyard. */
+export function sacrifice(s: GameState, ids: ObjectId[], by: PlayerId): ObjectId[] {
+  for (const id of ids) if (s.objects[id]?.zone === 'battlefield') fire(s, { kind: 'sacrificed', object: id, player: by });
+  return leaveBattlefield(s, ids, 'graveyard');
+}
 
 /**
  * Takes permanents off the battlefield at once. Leave and dies triggers are collected first, while
@@ -73,8 +89,9 @@ export function leaveBattlefield(s: GameState, ids: ObjectId[], to: 'graveyard' 
     const token = isToken(s, id);
     const earthbent = s.effects.find((e) => e.effect.earthbent && e.affected.includes(id));
     const name = v(o).name;
+    const power = v(o).power;
     const n = move(s, id, zoneOf(o.owner, d));
-    s.lastKnown[id] = { counters: { ...o.counters }, movedTo: n.id };
+    s.lastKnown[id] = { counters: { ...o.counters }, movedTo: n.id, power };
     if (token) { s.zones[n.zone].splice(s.zones[n.zone].indexOf(n.id), 1); delete s.objects[n.id]; continue; }
     // 701.65: an earthbent land that dies or is exiled comes back, by a triggered ability of its earthbending.
     if (earthbent && (d === 'graveyard' || d === 'exile')) {

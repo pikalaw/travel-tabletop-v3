@@ -33,7 +33,8 @@ export type Need =
   | { kind: 'sacrifice' | 'discard'; options: ObjectId[]; count: number }
   | { kind: 'x' }
   | { kind: 'target'; spec: number; legal: Target[]; count: number; upTo: boolean; text: string }
-  | { kind: 'tap'; options: ObjectId[] }
+  /** Creatures to tap for a cost: one, or (crew) enough for total power `power`. */
+  | { kind: 'tap'; options: ObjectId[]; power?: number }
   | { kind: 'confirm' };
 
 const scriptOf = (s: GameState, id: ObjectId) => s.setup.cards[s.objects[id]!.card]?.script;
@@ -90,6 +91,7 @@ export function nextNeed(s: GameState, p: PlayerId, i: Intent): Need {
   if (i.kind === 'activate' && !i.tapping) {
     const a = scriptOf(s, i.object)?.activated?.[i.ability ?? 0];
     if (a?.cost.tapAnother) return { kind: 'tap', options: tapCandidates(s, p, a) };
+    if (a?.cost.crew !== undefined) return { kind: 'tap', options: tapCandidates(s, p, a, i.object), power: a.cost.crew };
   }
   return { kind: 'confirm' };
 }

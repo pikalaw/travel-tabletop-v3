@@ -1,16 +1,17 @@
-import type { Amount } from '../abilities';
+import type { Amount, PlayerRef } from '../abilities';
 import { move, zoneOf } from '../state';
 import type { Handler, Resolution } from './kit';
 
 /** Scry N (701.22): look at the top N, then put any on the bottom and the rest back in any order. */
-export interface Scry { scry: Amount }
+export interface Scry { scry: Amount; player?: PlayerRef }
 /** Surveil N (701.25): the same, but the ones moved away go into the graveyard. */
 export interface Surveil { surveil: Amount }
 
-function arrange(r: Resolution, n: Amount, to: 'bottom' | 'graveyard') {
+function arrange(r: Resolution, n: Amount, to: 'bottom' | 'graveyard', who?: PlayerRef) {
   // The player looks at the top cards (privately) and decides where each goes.
   const { s } = r;
-  const p = r.ctx.controller;
+  const p = who ? r.players(who)[0] : r.ctx.controller;
+  if (!p) return;
   const lib = s.zones[zoneOf(p, 'library')];
   const k = Math.min(r.n(n), lib.length);
   if (k === 0) return;
@@ -26,5 +27,5 @@ function arrange(r: Resolution, n: Amount, to: 'bottom' | 'graveyard') {
   r.log(`${r.playerName(p)} ${to === 'bottom' ? 'scries' : 'surveils'} ${k}: ${answer.top.length} on top, ${answer.away.length} ${to === 'bottom' ? 'on the bottom' : 'into the graveyard'}`);
 }
 
-export const scry: Handler<Scry> = (e, r) => arrange(r, e.scry, 'bottom');
+export const scry: Handler<Scry> = (e, r) => arrange(r, e.scry, 'bottom', e.player);
 export const surveil: Handler<Surveil> = (e, r) => arrange(r, e.surveil, 'graveyard');

@@ -1,5 +1,6 @@
 import type { Amount, PlayerRef } from '../abilities';
-import { move, zoneOf } from '../state';
+import { zoneOf } from '../state';
+import { discardCard } from '../zones';
 import type { Handler } from './kit';
 
 /** "Discard N cards": the player chooses, unless it's their whole hand. */
@@ -17,6 +18,6 @@ export const discard: Handler<Discard> = (e, r) => {
     cards = picked.cards;
   }
   const discarded: string[] = [];
-  for (const id of cards) { r.log(`${r.playerName(p)} discards ${r.cardName(id)}`); discarded.push(move(r.s, id, zoneOf(p, 'graveyard')).id); }
+  for (const id of cards) discarded.push(discardCard(r.s, p, id));
   r.s.resolving!.discarded = discarded; // "when you discard a nonland card this way"
 };

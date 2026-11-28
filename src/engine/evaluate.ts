@@ -61,7 +61,7 @@ export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx:
   if (f.types && !f.types.some((t) => c.types.includes(t))) return false;
   if (f.notTypes && f.notTypes.some((t) => c.types.includes(t))) return false;
   if (f.allTypes && !f.allTypes.every((t) => c.types.includes(t))) return false;
-  if (f.token !== undefined && !!s.setup.cards[o.card]?.token !== f.token) return false;
+  if (f.token !== undefined && (!!s.setup.cards[o.card]?.token || !!o.tokenCopy) !== f.token) return false;
   if (f.subtypes && !f.subtypes.some((t) => c.subtypes.includes(t))) return false;
   if (f.notSubtypes && f.notSubtypes.some((t) => c.subtypes.includes(t))) return false;
   if (f.supertypes && !f.supertypes.some((t) => c.supertypes.includes(t))) return false;
@@ -71,6 +71,7 @@ export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx:
   if (f.self && o.id !== ctx.source) return false;
   if (f.attached && o.id !== (ctx.attachedTo ?? s.objects[ctx.source]?.attachedTo)) return false;
   if (f.tapped !== undefined && o.tapped !== f.tapped) return false;
+  if (f.damaged !== undefined && (o.damage > 0) !== f.damaged) return false;
   if (f.attacking !== undefined && (o.attacking !== undefined) !== f.attacking) return false;
   if (f.blocking !== undefined && (o.blocking !== undefined) !== f.blocking) return false;
   if (f.keyword && !c.keywords.includes(f.keyword)) return false;
@@ -105,6 +106,11 @@ export function objects(s: GameState, view: View, ref: ObjectRef, ctx: Context):
   if (ref === 'created') return ctx.created && s.objects[ctx.created] ? [s.objects[ctx.created]!] : [];
   if (ref === 'affected') return ctx.affected && s.objects[ctx.affected] ? [s.objects[ctx.affected]!] : [];
   if (ref === 'eventSource') return ctx.eventSource && s.objects[ctx.eventSource] ? [s.objects[ctx.eventSource]!] : [];
+  if (typeof ref === 'object' && 'topOf' in ref) {
+    const lib = s.zones[`${ref.topOf === 'you' ? ctx.controller : ctx.controller === 'p1' ? 'p2' : 'p1'}.library`];
+    const top = lib[lib.length - 1];
+    return top ? [s.objects[top]!] : [];
+  }
   if (typeof ref === 'object' && 'ids' in ref) return ref.ids.flatMap((id) => (s.objects[id] ? [s.objects[id]!] : []));
   if (ref === 'chosen') return (ctx.chosen ?? []).flatMap((id) => (s.objects[id] ? [s.objects[id]!] : []));
   if (ref === 'thisCard') {
@@ -138,7 +144,11 @@ export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ct
   }
   if ('count' in a) return select(s, view, a.count, ctx).length;
   if ('counters' in a) return countersOf(s, view, a.on, ctx).reduce((n, c) => n + (a.counters === '*' ? Object.values(c).reduce((x, y) => x + y, 0) : c[a.counters] ?? 0), 0);
-  if ('powerOf' in a) return objects(s, view, a.powerOf, ctx).reduce((n, o) => n + view(o).power, 0);
+  if ('powerOf' in a) {
+    // An object that left uses its power as it last existed (608.2h): "the sacrificed creature's power".
+    if (a.powerOf === 'chosen') return (ctx.chosen ?? []).reduce((n, id) => n + (s.objects[id] ? view(s.objects[id]!).power : s.lastKnown[id]?.power ?? 0), 0);
+    return objects(s, view, a.powerOf, ctx).reduce((n, o) => n + view(o).power, 0);
+  }
   if ('manaValueOf' in a) return objects(s, view, a.manaValueOf, ctx).reduce((n, o) => n + manaValue(s.setup.cards[o.card]!.manaCost), 0);
   if ('times' in a) return amount(s, view, a.times, ctx, x) * a.by;
   if ('half' in a) return Math.ceil(amount(s, view, a.half, ctx, x) / 2);

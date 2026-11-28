@@ -66,7 +66,18 @@ function randomAnswer(s: GameState): Choice {
     case 'triggerTargets': return { kind: 'targets', targets: triggerTargetOptions(s).map((o) => (o.legal.length ? [pick(o.legal)] : [])) };
     case 'chooseColor': return { kind: 'color', color: pick(d.options) };
     case 'arrange': { const away = some(d.cards); return { kind: 'arrange', top: d.cards.filter((c) => !away.includes(c)), away }; }
-    case 'choose': return { kind: 'option', index: n(d.options.length) };
+    case 'choose': {
+      if (d.max === undefined) return { kind: 'option', index: n(d.options.length) };
+      // Up to `max` modes, at most one of each exclusive group.
+      const seen = new Set<string>();
+      const indices = d.options.map((_, i) => i).filter((i) => {
+        const k = d.exclusive?.[i];
+        if (n(2) || (k && seen.has(k))) return false;
+        if (k) seen.add(k);
+        return true;
+      }).slice(0, d.max);
+      return { kind: 'options', indices };
+    }
     case 'distribute': {
       const amounts: Record<string, number> = {};
       for (let k = 0; k < d.total; k++) { const id = pick(d.options); amounts[id] = (amounts[id] ?? 0) + 1; }

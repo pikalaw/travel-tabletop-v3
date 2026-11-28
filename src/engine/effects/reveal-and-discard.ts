@@ -1,6 +1,7 @@
 import type { Filter, PlayerRef } from '../abilities';
 import { matches } from '../evaluate';
-import { move, zoneOf } from '../state';
+import { zoneOf } from '../state';
+import { discardCard } from '../zones';
 import type { Handler } from './kit';
 
 /** "Target opponent reveals their hand. You choose a … card from it. That player discards that card." */
@@ -17,6 +18,6 @@ export const revealAndDiscard: Handler<RevealAndDiscard> = (e, r) => {
       if (!options.length) continue;
       return r.ask({ kind: 'pick', player: ctx.controller, from: shown, options, min: 1, max: 1, text: `Choose a card for ${r.playerName(q)} to discard` });
     }
-    for (const id of picked.cards) { r.log(`${r.playerName(q)} discards ${r.cardName(id)}`); move(s, id, zoneOf(q, 'graveyard')); }
+    for (const id of picked.cards) discardCard(s, q, id);
   }
 };

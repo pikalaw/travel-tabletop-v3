@@ -6,7 +6,7 @@
 import type { Effect } from './abilities';
 import { characteristics, isType, summoningSick, view } from './characteristics';
 import { amount, holds, matches, type Context } from './evaluate';
-import { parseCost, solvePayment, type ManaSource } from './mana';
+import { manaValue, parseCost, solvePayment, type ManaSource } from './mana';
 import { activatedOf, controlledBy, event, obj, printed, spellOf } from './state';
 import type { Choice, Color, GameState, ManaSymbol, ObjectId, PlayerId } from './types';
 import { COLORS } from './types';
@@ -72,6 +72,20 @@ export function manaSources(s: GameState, p: PlayerId, opts: { waterbend?: boole
     // A source that makes two mana is two units of one tap: "id", then "id#1".
     for (let k = 0; k < t.n; k++) out.push({ id: k ? `${o.id}#${k}` : o.id, makes: t.makes });
     mana.add(o.id);
+  }
+  // "Tap two untapped Foods you control: Add one mana of any color" (The Cabbage Merchant): each group is one source.
+  for (const o of controlledBy(s, p)) {
+    if (characteristics(s, o).abilitiesRemoved) continue;
+    for (const a of activatedOf(s, o.id)) {
+      const many = a.mana ? a.cost.tapMany : undefined;
+      if (!many) continue;
+      const free = controlledBy(s, p).filter((x) => !x.tapped && !mana.has(x.id) && matches(s, view(s), x, many.filter, { controller: p, source: o.id })).map((x) => x.id);
+      for (let k = 0; k + many.n <= free.length; k += many.n) {
+        const group = free.slice(k, k + many.n);
+        out.push({ id: `many:${group.join('+')}`, makes: manaYield(s, o.id, a.effects).makes });
+        for (const id of group) mana.add(id);
+      }
+    }
   }
   if (opts.waterbend) {
     for (const o of controlledBy(s, p)) {
@@ -140,6 +154,7 @@ export function pay(s: GameState, p: PlayerId, sources: string[]): void {
     if (kind === 'pool') s.players[p].pool[c]--;
     else if (kind === 'combat') s.players[p].combatPool[c]--;
     else if (kind === 'wb') tap(s, id.slice(3));
+    else if (kind === 'many') for (const t of id.slice(5).split('+')) tap(s, t);
     else { const o = id.split('#')[0]!; tapped.set(o, (tapped.get(o) ?? 0) + 1); }
   }
   // Tapping a source makes all its mana; what this payment didn't use floats in the pool.
@@ -156,6 +171,10 @@ export function pay(s: GameState, p: PlayerId, sources: string[]): void {
  */
 export function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0, option?: number) {
   const o = obj(s, id);
+  // Another player's exiled card cast by permission: free, or by waterbending its mana value (Hama).
+  if (o.castableBy?.player === p && o.zone.endsWith('.exile')) {
+    return costToPay(s, p, [], o.castableBy.cost === 'free' ? 0 : manaValue(printed(s, o).manaCost));
+  }
   const printedCost = o.zone.endsWith('.exile') && o.airbended ? parseCost('{2}') : printed(s, o).manaCost;
   // 107.3: X is paid as the chosen number.
   const cost = printedCost.map((m): ManaSymbol => (m.kind === 'x' ? { kind: 'generic', amount: x } : m));
@@ -205,6 +224,7 @@ export function paymentPreview(s: GameState, p: PlayerId, c: Choice): { tapped: 
     if (id.startsWith('via:')) converted = true;
     const inner = id.startsWith('via:') ? id.split('>')[1]! : id;
     if (inner.startsWith('pool:') || inner.startsWith('combat:')) floating++;
+    else if (inner.startsWith('many:')) for (const id of inner.slice(5).split('+')) tapped.add(id);
     else tapped.add((inner.startsWith('wb:') ? inner.slice(3) : inner).split('#')[0]!);
   }
   return { tapped: [...tapped], floating, converted };

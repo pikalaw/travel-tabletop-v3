@@ -3,6 +3,7 @@ import type { Effect } from '.';
 import { matches } from '../evaluate';
 import { shuffle } from '../rng';
 import { move, zoneOf } from '../state';
+import { fire } from '../triggers';
 import type { Handler } from './kit';
 
 /**
@@ -25,7 +26,7 @@ export const lookAtTop: Handler<LookAtTop> = (e, r) => {
     const lib = s.zones[zoneOf(p, 'library')];
     const k = Math.min(r.n(e.lookAtTop), lib.length);
     let seen = lib.slice(lib.length - k).reverse(); // top first
-    if (e.rest === 'mill') { seen = seen.map((id) => move(s, id, zoneOf(p, 'graveyard')).id); r.log(`${r.playerName(p)} mills ${k}`); }
+    if (e.rest === 'mill') { seen = seen.map((id) => move(s, id, zoneOf(p, 'graveyard')).id); r.log(`${r.playerName(p)} mills ${k}`); fire(s, { kind: 'milled', player: p, n: k }); }
     res.looked = seen;
     const options = seen.filter((id) => matches(s, v, s.objects[id]!, { ...e.mayTake, zone: e.rest === 'mill' ? 'graveyard' : 'library' }, ctx));
     if (e.all) {

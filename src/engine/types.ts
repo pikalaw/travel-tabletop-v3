@@ -94,6 +94,13 @@ export interface GameObject {
   playableTurn?: number;
   /** The colour chosen as it entered (Thriving lands). */
   chosenColor?: Color;
+  /** A token that's a copy of a card (Joo Dee): it ceases to exist when it leaves the battlefield. */
+  tokenCopy?: boolean;
+  /**
+   * Another player may cast this exiled card (Hama, Fire Lord Ozai): who, how it's paid, and how
+   * long: while they control `source`, or through `untilTurn`. `group`: only one of the group may be played.
+   */
+  castableBy?: { player: PlayerId; cost: 'free' | 'waterbendManaValue'; source?: ObjectId; untilTurn?: number; yourTurnOnly?: boolean; group?: string };
   /** The additional-cost option it was cast with, kept by the permanent it becomes ("if her additional cost was paid"). */
   castWith?: number;
   /** For a spell on the stack: counters the permanent enters with (mana with a rider was spent on it). */
@@ -217,7 +224,8 @@ export type Decision =
    */
   | { kind: 'pick'; player: PlayerId; from: ObjectId[]; options: ObjectId[]; min: number; max: number; orNone?: boolean; text: string; done?: string; none?: string }
   /** The general choice among worded options ("Put it onto the battlefield", "Leave it on top"), with any cards it's about, shown to the chooser. */
-  | { kind: 'choose'; player: PlayerId; text: string; options: string[]; cards?: ObjectId[] }
+  /** With `max`: pick up to that many options (modes); options sharing an `exclusive` key exclude each other. */
+  | { kind: 'choose'; player: PlayerId; text: string; options: string[]; cards?: ObjectId[]; max?: number; exclusive?: (string | null)[] }
   /** Divide `total` (counters, damage) among `options`, each getting any number, all of it given out. */
   | { kind: 'distribute'; player: PlayerId; options: ObjectId[]; total: number; text: string }
   /** "You may cast a … spell from your hand without paying its mana cost": a cast of one of `options`, or no. */
@@ -242,6 +250,8 @@ export type Choice =
   | { kind: 'arrange'; top: ObjectId[]; away: ObjectId[] }
   | { kind: 'pick'; cards: ObjectId[] }
   | { kind: 'option'; index: number }
+  /** For a choose with `max`: the options taken (any number up to it). */
+  | { kind: 'options'; indices: number[] }
   | { kind: 'distribute'; amounts: Record<ObjectId, number> }
   | { kind: 'yes' }
   | { kind: 'no' }
@@ -318,7 +328,7 @@ export interface GameState {
    */
   delayed: DelayedTrigger[];
   /** Counters on permanents that left the battlefield this turn, for "its counters" (608.2h). */
-  lastKnown: Record<ObjectId, { counters: Record<string, number>; movedTo?: ObjectId }>;
+  lastKnown: Record<ObjectId, { counters: Record<string, number>; movedTo?: ObjectId; power?: number }>;
   /** What happened this turn, for "this turn" conditions and "second card" triggers. */
   turnLog: {
     attacked: Record<PlayerId, boolean>; lifeLost: Record<PlayerId, number>; drawn: Record<PlayerId, number>; tapped: Record<ObjectId, number>;

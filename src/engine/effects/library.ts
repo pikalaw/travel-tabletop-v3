@@ -1,5 +1,6 @@
 import type { Amount, ObjectRef, PlayerRef } from '../abilities';
 import { move, shuffleLibrary, top, zoneOf } from '../state';
+import { fire } from '../triggers';
 import { leaveBattlefield } from '../zones';
 import type { Handler } from './kit';
 
@@ -15,7 +16,7 @@ export const mill: Handler<Mill> = (e, r) => {
   for (const p of r.players(e.mill)) {
     const k = r.n(e.n);
     for (let i = k; i > 0; i--) { const id = top(r.s, p); if (id) milled.push(move(r.s, id, zoneOf(p, 'graveyard')).id); }
-    if (k > 0) r.log(`${r.playerName(p)} mills ${k}`);
+    if (k > 0) { r.log(`${r.playerName(p)} mills ${k}`); fire(r.s, { kind: 'milled', player: p, n: k }); }
   }
   r.s.resolving!.chosen = milled; // "a card milled this way"
 };

@@ -148,10 +148,14 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
     setIntent(withDrop(s, actor, i, drop));
   };
   const pickCost = (id: ObjectId) => {
-    if (!intent || (need?.kind !== 'sacrifice' && need?.kind !== 'discard')) return;
+    if (!intent || (need?.kind !== 'sacrifice' && need?.kind !== 'discard' && need?.kind !== 'tap')) return;
     const next = picking.includes(id) ? picking.filter((y) => y !== id) : [...picking, id];
-    if (next.length < need.count) { setPicking(next); return; }
-    setIntent({ ...intent, [need.kind === 'sacrifice' ? 'sacrificing' : 'discarding']: next });
+    // Enough chosen: the count, or (crew) the total power; one creature to tap goes at once.
+    const enough = need.kind === 'tap'
+      ? need.power === undefined || next.reduce((n, y) => n + characteristics(s, s.objects[y]!).power, 0) >= need.power
+      : next.length >= need.count;
+    if (!enough) { setPicking(next); return; }
+    setIntent({ ...intent, [need.kind === 'sacrifice' ? 'sacrificing' : need.kind === 'discard' ? 'discarding' : 'tapping']: next });
     setPicking([]);
   };
   const pickTarget = (t: Target) => {
@@ -203,8 +207,7 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
   const onPick = (t: Target) => {
     if (off) return;
     if (intent && need?.kind === 'target') { pickTarget(t); return; }
-    if (intent && need?.kind === 'tap') { setIntent({ ...intent, tapping: [t] }); return; }
-    if (intent && (need?.kind === 'sacrifice' || need?.kind === 'discard')) { pickCost(t); return; }
+    if (intent && (need?.kind === 'tap' || need?.kind === 'sacrifice' || need?.kind === 'discard')) { pickCost(t); return; }
     if (!d) return;
     switch (d.kind) {
       case 'attackers': setAtk((a) => { const n = new Set(a); if (n.has(t)) n.delete(t); else n.add(t); return n; }); return;

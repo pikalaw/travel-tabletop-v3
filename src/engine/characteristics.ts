@@ -120,9 +120,10 @@ function compute(s: GameState): Map<ObjectId, Characteristics> {
   });
   // Layer 6: ability-adding and ability-removing effects, in timestamp order.
   for (const id of removed) { const c = map.get(id); if (c) c.abilitiesRemoved = true; }
-  each((e) => !!(e.addKeywords || e.removeAllAbilities || e.addsMana), (c, a) => {
+  each((e) => !!(e.addKeywords || e.removeAllAbilities || e.addsMana || e.removeKeywords), (c, a) => {
     if (a.effect.removeAllAbilities) { c.keywords = []; delete c.addsMana; }
     if (a.effect.addsMana) c.addsMana = a.effect.addsMana;
+    if (a.effect.removeKeywords) c.keywords = c.keywords.filter((k) => !a.effect.removeKeywords!.includes(k));
     for (const k of a.effect.addKeywords ?? []) if (!c.keywords.includes(k)) c.keywords.push(k);
   });
   // Layer 7a: characteristic-defining abilities.

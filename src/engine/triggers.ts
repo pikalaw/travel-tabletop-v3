@@ -23,7 +23,10 @@ export type GameEventKind =
   | { kind: 'toGraveyard'; object: ObjectId }
   | { kind: 'countersPut'; object: ObjectId; counter: string; n: number; player: PlayerId }
   | { kind: 'becomesTarget'; object: ObjectId; by: ObjectId; player: PlayerId }
-  | { kind: 'toLibrary'; object: ObjectId };
+  | { kind: 'toLibrary'; object: ObjectId }
+  | { kind: 'sacrificed'; object: ObjectId; player: PlayerId }
+  | { kind: 'discarded'; object: ObjectId; player: PlayerId }
+  | { kind: 'milled'; player: PlayerId; n: number };
 
 /** The keyword library's triggered keywords (702): written once, used by every card that has them. */
 const KEYWORD_TRIGGERS: Record<string, TriggeredAbility> = {
@@ -90,6 +93,10 @@ function eventMatches(s: GameState, v: View, w: TriggerEvent, self: boolean | un
     return filterOn(w.becomesTarget);
   }
   if ('toLibrary' in w) return ev.kind === 'toLibrary';
+  if ('sacrificed' in w) return ev.kind === 'sacrificed' && ev.player === ctx.controller && filterOn(w.sacrificed);
+  const whose = (p: PlayerId, w: 'you' | 'opponent') => (w === 'you') === (p === ctx.controller);
+  if ('discards' in w) return ev.kind === 'discarded' && whose(ev.player, w.discards);
+  if ('mills' in w) return ev.kind === 'milled' && ev.n > 0 && whose(ev.player, w.mills);
   if ('countersPut' in w) return ev.kind === 'countersPut' && ev.counter === w.kind && ev.player === ctx.controller && filterOn(w.countersPut);
   if ('step' in w) return ev.kind === 'step' && ev.step === w.step && (w.whose === 'any' || s.active === ctx.controller);
   return false;

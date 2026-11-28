@@ -1,6 +1,6 @@
 import type { ObjectRef } from '../abilities';
 import { move, zoneOf } from '../state';
-import { leaveBattlefield } from '../zones';
+import { leaveBattlefield, sacrifice as sacrificePermanents } from '../zones';
 import type { Handler } from './kit';
 
 export interface Destroy { destroy: ObjectRef }
@@ -25,5 +25,6 @@ export const bounce: Handler<Bounce> = (e, r) => {
 };
 
 export const sacrifice: Handler<Sacrifice> = (e, r) => {
-  leaveBattlefield(r.s, r.objs(e.sacrifice).filter((o) => o.controller === r.ctx.controller).map((o) => o.id), 'graveyard');
+  // Each permanent is sacrificed by its controller ("target opponent sacrifices a creature of their choice").
+  for (const o of r.objs(e.sacrifice)) { r.log(`${r.playerName(o.controller)} sacrifices ${r.cardName(o.id)}`); sacrificePermanents(r.s, [o.id], o.controller); }
 };

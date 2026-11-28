@@ -39,3 +39,10 @@ export const ward = (cost: string): TriggeredAbility => ({
   effects: [{ counterUnlessPays: cost, on: 'eventSource' }],
   text: `Ward ${cost}`,
 });
+
+/** Crew N (702.122): "Tap any number of untapped creatures you control with total power N or more: This Vehicle becomes an artifact creature until end of turn." */
+export const crew = (n: number): ActivatedAbility => ({
+  cost: { crew: n },
+  effects: [{ continuous: { addTypes: ['Creature'] }, on: 'self', duration: 'endOfTurn' }],
+  text: `Crew ${n}`,
+});

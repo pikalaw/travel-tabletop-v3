@@ -15,6 +15,9 @@ import { continuous, exileIfWouldDie, grant, pump, type Continuous, type ExileIf
 import { counterSpell, counterUnlessPays, type CounterSpell, type CounterUnlessPays } from './counter-spell';
 import { addCounters, putCountersOf, removeAnyCounters, removeCounters, type AddCounters, type PutCountersOf, type RemoveAnyCounters, type RemoveCounters } from './counters';
 import { castFromHand, type CastFromHand } from './cast-from-hand';
+import { copySelf, type CopySelf } from './copy-self';
+import { exileCastable, type ExileCastable } from './exile-castable';
+import { modal, type Modal } from './modal';
 import { choose, type Choose } from './choose';
 import { distributeCounters, type DistributeCounters } from './distribute';
 import { exileReturns, type ExileReturns } from './exile-returns';
@@ -56,7 +59,8 @@ export type Effect =
   | ExtraLand | Optional | Fight | CounterSpell | CounterUnlessPays
   | May | UnlessPays | If
   | Delayed | Reflexive | EachDeals | PlayerCounter | TopCard | Choose | ToOwnersLibrary
-  | DistributeCounters | ExileReturns | ToLibraryTop | CastFromHand;
+  | DistributeCounters | ExileReturns | ToLibraryTop | CastFromHand
+  | ExileCastable | Modal | CopySelf;
 
 const HANDLERS = {
   draw, discard, damage, gainLife, loseLife,
@@ -69,6 +73,7 @@ const HANDLERS = {
   may, unlessPays, if: conditional,
   delayed, reflexive, eachDeals, playerCounter, topCard, choose, toOwnersLibrary,
   distributeCounters, exileReturns, toLibraryTop, castFromHand,
+  exileCastable, modal, copySelf,
 } satisfies Record<string, Handler<never>>;
 
 type Key = keyof typeof HANDLERS;

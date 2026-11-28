@@ -1,8 +1,8 @@
 import type { Filter } from '../abilities';
 import type { Effect } from '.';
 import { select } from '../evaluate';
-import { move, zoneOf } from '../state';
-import { leaveBattlefield } from '../zones';
+import { zoneOf } from '../state';
+import { discardCard, sacrifice as sacrificePermanents } from '../zones';
 import type { Handler } from './kit';
 
 /** "You may sacrifice a creature or artifact. If you do, …" / "You may discard a card. If you do, …" */
@@ -21,7 +21,9 @@ export const optional: Handler<Optional> = (e, r) => {
     return r.ask({ kind: 'pick', player: p, from: options, options, min: count, max: count, orNone: true, text: `You may ${what}`, done: sacrifice ? 'Sacrifice' : 'Discard', none: "Don't" });
   }
   if (!picked.cards.length) return;
-  if (sacrifice) leaveBattlefield(s, picked.cards, 'graveyard');
-  else for (const id of picked.cards) { r.log(`${r.playerName(p)} discards ${r.cardName(id)}`); move(s, id, zoneOf(p, 'graveyard')); }
+  // The power of what's sacrificed, as it last existed, is "the sacrificed creature's power".
+  s.resolving!.chosen = picked.cards;
+  if (sacrifice) { for (const id of picked.cards) r.log(`${r.playerName(p)} sacrifices ${r.cardName(id)}`); sacrificePermanents(s, picked.cards, p); }
+  else for (const id of picked.cards) discardCard(s, p, id);
   r.then(e.then);
 };

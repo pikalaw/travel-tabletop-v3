@@ -6,9 +6,9 @@
 import type { Continuous, Cost } from './abilities';
 import { view } from './characteristics';
 import { amount, holds, matches, select } from './evaluate';
-import { controlledBy, event, move, obj, spellOf, zoneOf } from './state';
+import { controlledBy, event, obj, spellOf, zoneOf } from './state';
 import type { GameState, ObjectId, PlayerId } from './types';
-import { leaveBattlefield } from './zones';
+import { discardCard, sacrifice } from './zones';
 
 /** What a cost asks the payer to choose: the objects it may take, and how many. */
 export interface CostChoices { sacrifice?: { options: ObjectId[]; count: number }; discard?: { options: ObjectId[]; count: number } }
@@ -84,10 +84,7 @@ export function payCostChoices(s: GameState, p: PlayerId, c: CostChoices, sacrif
   const name = s.setup.players[p].name;
   for (const id of settled(c.sacrifice, sacrificing) ?? []) {
     event(s, `${name} sacrifices ${view(s)(obj(s, id)).name}`);
-    leaveBattlefield(s, [id], 'graveyard');
+    sacrifice(s, [id], p);
   }
-  for (const id of settled(c.discard, discarding) ?? []) {
-    event(s, `${name} discards ${view(s)(obj(s, id)).name}`);
-    move(s, id, zoneOf(p, 'graveyard'));
-  }
+  for (const id of settled(c.discard, discarding) ?? []) discardCard(s, p, id);
 }

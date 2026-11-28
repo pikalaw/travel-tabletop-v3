@@ -164,7 +164,16 @@ export function DecisionPrompt({ s, d, a, send }: { s: GameState; d: Decision; a
         </div>
       );
     }
-    case 'choose': return (
+    case 'choose': if (d.max !== undefined) {
+      const on = a.chosen.map(Number);
+      return (
+        <div class="prompt">
+          <p>{d.text}</p>
+          {d.options.map((o, i) => <button key={i} class={`btn opt ${on.includes(i) ? 'on' : ''}`} onClick={() => a.toggleChosen(String(i), d.max!)} data-testid={`option-${i}`}>{o}</button>)}
+          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'options', indices: on })} data-testid="done">{on.length ? 'Done' : 'None'}</button></div>
+        </div>
+      );
+    } else return (
       <div class="prompt">
         <p>{d.text}</p>
         {d.cards && <CardList s={s} ids={d.cards} selectable={new Set()} selected={new Set()} onPick={() => undefined} />}
@@ -273,8 +282,8 @@ export function IntentPrompt(c: Casting) {
     );
     case 'tap': return (
       <div class="prompt">
-        <p><b>{name}</b>: tap an untapped creature you control</p>
-        <div class="chips-row">{need.options.map((id) => <button key={id} class="btn chipbtn" onClick={() => setIntent({ ...intent, tapping: [id] })}>{nameOf(s, id)}</button>)}</div>
+        <p><b>{name}</b>: {need.power !== undefined ? `crew ${need.power}: tap creatures with total power ${need.power} or more` : 'tap an untapped creature you control'}</p>
+        <div class="chips-row">{need.options.map((id) => <button key={id} class={`btn chipbtn ${picking.includes(id) ? 'on' : ''}`} onClick={() => c.pickCost(id)} data-testid={`tap-${nameOf(s, id)}`}>{nameOf(s, id)}</button>)}</div>
         <div class="row">{cancel}</div>
       </div>
     );
