@@ -11,6 +11,21 @@ export const firebending = (n: Amount, onlyIf?: Condition): TriggeredAbility => 
   text: `Firebending ${typeof n === 'number' ? n : 'X'}`,
 });
 
+/** Storm (702.40): "When you cast this spell, copy it for each spell cast before it this turn." */
+export const storm: TriggeredAbility = {
+  when: { cast: {}, by: 'you' }, self: true,
+  effects: [{ copySpell: 'self', times: 'spellsCastBefore' }],
+  text: 'Storm',
+};
+
+/** Mentor (702.134): "Whenever this creature attacks, put a +1/+1 counter on target attacking creature with lesser power." */
+export const mentor: TriggeredAbility = {
+  when: { attacks: {} }, self: true,
+  targets: [{ objects: { types: ['Creature'], attacking: true, powerBelowSource: true } }],
+  effects: [{ addCounters: '+1/+1', n: 1, on: { target: 0 } }],
+  text: 'Mentor',
+};
+
 /** The target an earthbend needs: "target land you control". */
 export const LAND_YOU_CONTROL: TargetSpec = { objects: { types: ['Land'], controller: 'you' } };
 

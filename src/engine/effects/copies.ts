@@ -1,4 +1,4 @@
-import type { ObjectRef } from '../abilities';
+import type { Amount, ObjectRef } from '../abilities';
 import { createObject } from '../state';
 import type { GameObject } from '../types';
 import type { Handler } from './kit';
@@ -16,11 +16,12 @@ export const copyTrigger: Handler<CopyTrigger> = (_e, r) => {
   r.s.pendingTriggers.push({ controller: r.ctx.controller, source: creature.id, sourceName: r.cardName(creature.id), card: creature.card, index: r.ctx.eventAmount, eventObject: creature.id });
 };
 
-/** "Copy it" (Jeong Jeong): a copy of a spell on the stack, with the same modes, X and targets (707.10). */
-export interface CopySpell { copySpell: ObjectRef }
+/** "Copy it" (Jeong Jeong): a copy of a spell on the stack, with the same modes, X and targets (707.10); `times` copies (storm). */
+export interface CopySpell { copySpell: ObjectRef; times?: Amount }
 
 export const copySpell: Handler<CopySpell> = (e, r) => {
-  for (const o of r.objs(e.copySpell)) {
+  const times = e.times === undefined ? 1 : r.n(e.times);
+  for (const o of r.objs(e.copySpell)) for (let k = 0; k < times; k++) {
     if (o.zone !== 'stack' || o.ability) continue;
     const c: GameObject = createObject(r.s, o.card, r.ctx.controller, 'stack');
     c.controller = r.ctx.controller;

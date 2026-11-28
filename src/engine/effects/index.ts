@@ -22,6 +22,8 @@ import { keepWithinPower, type KeepWithinPower } from './keep-within';
 import { nthResolution, type NthResolution } from './nth-resolution';
 import { discardHandDraw, type DiscardHandDraw } from './wheel';
 import { copySpell, copyTrigger, type CopySpell, type CopyTrigger } from './copies';
+import { castRandomFromGraveyard, grantFlashback, type CastRandomFromGraveyard, type GrantFlashback } from './graveyard-cast';
+import { changeTarget, type ChangeTarget } from './retarget';
 import { choose, type Choose } from './choose';
 import { distributeCounters, type DistributeCounters } from './distribute';
 import { exileReturns, type ExileReturns } from './exile-returns';
@@ -64,7 +66,8 @@ export type Effect =
   | May | MayPay | UnlessPays | If
   | Delayed | Reflexive | EachDeals | PlayerCounter | TopCard | Choose | ToOwnersLibrary
   | DistributeCounters | ExileReturns | ToLibraryTop | CastFromHand
-  | ExileCastable | Modal | CopySelf | DiscardHandDraw | KeepWithinPower | NthResolution | CopyTrigger | CopySpell;
+  | ExileCastable | Modal | CopySelf | DiscardHandDraw | KeepWithinPower | NthResolution | CopyTrigger | CopySpell
+  | ChangeTarget | CastRandomFromGraveyard | GrantFlashback;
 
 const HANDLERS = {
   draw, discard, damage, gainLife, loseLife,
@@ -77,7 +80,7 @@ const HANDLERS = {
   may, mayPay, unlessPays, if: conditional,
   delayed, reflexive, eachDeals, playerCounter, topCard, choose, toOwnersLibrary,
   distributeCounters, exileReturns, toLibraryTop, castFromHand,
-  exileCastable, modal, copySelf, discardHandDraw, keepWithinPower, nthResolution, copyTrigger, copySpell,
+  exileCastable, modal, copySelf, discardHandDraw, keepWithinPower, nthResolution, copyTrigger, copySpell, changeTarget, castRandomFromGraveyard, grantFlashback,
 } satisfies Record<string, Handler<never>>;
 
 type Key = keyof typeof HANDLERS;

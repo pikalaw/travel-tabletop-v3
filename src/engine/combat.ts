@@ -20,7 +20,7 @@ export function canAttack(s: GameState, o: GameObject): boolean {
 
 export function canBlock(s: GameState, blocker: GameObject, attacker: GameObject): boolean {
   if (blocker.zone !== 'battlefield' || blocker.controller === s.active || !isType(s, blocker, 'Creature') || blocker.tapped) return false;
-  if (attacker.attacking === undefined || hasKeyword(s, blocker, "can't attack or block")) return false;
+  if (attacker.attacking === undefined || hasKeyword(s, blocker, "can't attack or block") || hasKeyword(s, blocker, "can't block")) return false;
   if (hasKeyword(s, attacker, 'flying') && !hasKeyword(s, blocker, 'flying') && !hasKeyword(s, blocker, 'reach')) return false;
   if (hasKeyword(s, attacker, "can't be blocked")) return false;
   if (hasKeyword(s, attacker, "can't be blocked by creatures with power 2 or less") && characteristics(s, blocker).power <= 2) return false;

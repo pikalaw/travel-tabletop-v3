@@ -56,7 +56,9 @@ const cmp = (v: number, c: { op: '<=' | '>=' | '=='; n: number }) => (c.op === '
 
 export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx: Context): boolean {
   if (zoneName(o) !== (f.zone ?? 'battlefield')) return false;
-  if (o.ability) return false; // abilities on the stack are not objects a filter selects
+  // Abilities on the stack are not objects a filter selects, but a spell-or-ability target (Bolt Bend).
+  if (o.ability && !f.singleTarget) return false;
+  if (f.singleTarget && (o.targets ?? []).flat().length !== 1) return false;
   const c = view(o);
   if (f.types && !f.types.some((t) => c.types.includes(t))) return false;
   if (f.notTypes && f.notTypes.some((t) => c.types.includes(t))) return false;
@@ -88,6 +90,7 @@ export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx:
   if (f.anyOf && !f.anyOf.some((g) => matches(s, view, o, { ...g, zone: f.zone ?? 'battlefield' }, ctx))) return false;
   if (f.controlledByTarget !== undefined && !(ctx.targets?.[f.controlledByTarget] ?? []).includes(o.controller)) return false;
   if (f.power && !cmp(c.power, f.power)) return false;
+  if (f.powerBelowSource) { const src = s.objects[ctx.source]; if (!src || c.power >= view(src).power) return false; }
   if (f.toughness && !cmp(c.toughness, f.toughness)) return false;
   if (f.manaValue && !cmp(manaValue(s.setup.cards[o.card]!.manaCost), f.manaValue)) return false;
   return true;
@@ -140,6 +143,7 @@ export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ct
   if (a === 'x') return x;
   if (a === 'eventAmount') return ctx.eventAmount ?? 0;
   if (a === 'excessDamage') return s.resolving?.excess ?? 0;
+  if (a === 'spellsCastBefore') return Math.max(0, (s.objects[ctx.source]?.castNumber ?? 1) - 1);
   if ('playerCounters' in a) return s.players[ctx.controller].counters[a.playerCounters] ?? 0;
   if ('creatureTypesOf' in a) {
     // Creature types are the subtypes of a creature (205.3m); the pool has no changelings.
@@ -156,7 +160,11 @@ export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ct
   }
   if ('manaValueOf' in a) return objects(s, view, a.manaValueOf, ctx).reduce((n, o) => n + manaValue(s.setup.cards[o.card]!.manaCost), 0);
   if ('times' in a) return amount(s, view, a.times, ctx, x) * a.by;
-  if ('thisTurn' in a) return a.thisTurn === 'youSacrificed' ? s.turnLog.sacrificed[ctx.controller] : (['p1', 'p2'] as const).filter((p) => s.turnLog.discarded[p] > 0).length;
+  if ('thisTurn' in a) {
+    if (a.thisTurn === 'youSacrificed') return s.turnLog.sacrificed[ctx.controller];
+    if (a.thisTurn === 'cardsYouDrew') return s.turnLog.drawn[ctx.controller];
+    return (['p1', 'p2'] as const).filter((p) => s.turnLog.discarded[p] > 0).length;
+  }
   if ('when' in a) return holds(s, view, a.when, ctx) ? a.n : 0;
   if ('half' in a) return Math.ceil(amount(s, view, a.half, ctx, x) / 2);
   return amount(s, view, a.plus, ctx, x) + a.and;
@@ -171,6 +179,12 @@ export function holds(s: GameState, view: View, c: Condition, ctx: Context): boo
   if ('not' in c) return !holds(s, view, c.not, ctx);
   if ('any' in c) return c.any.some((x) => holds(s, view, x, ctx));
   if ('drawnThisTurn' in c) return s.turnLog.drawn[ctx.controller] >= c.drawnThisTurn;
+  if ('targetsShareCreatureType' in c) {
+    const [a, b] = (ctx.targets?.[c.targetsShareCreatureType] ?? []).map((id) => s.objects[id]).filter((o) => !!o);
+    if (!a || !b) return false;
+    const types = (o: GameObject) => (view(o).types.includes('Creature') ? view(o).subtypes : []);
+    return types(a).some((t) => types(b).includes(t));
+  }
   if ('compare' in c) { const a = amount(s, view, c.compare, ctx), b = amount(s, view, c.with, ctx); return c.op === '<=' ? a <= b : c.op === '>=' ? a >= b : a === b; }
   if ('chosen' in c) return (ctx.chosen ?? []).some((id) => !!s.objects[id] && matches(s, view, s.objects[id]!, { ...c.chosen, zone: c.chosen.zone ?? 'graveyard' }, ctx));
   if ('costPaid' in c) return s.objects[ctx.source]?.castWith === c.costPaid;

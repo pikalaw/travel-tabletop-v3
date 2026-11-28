@@ -48,8 +48,12 @@ export interface Filter {
   /** Shares a creature type with an object matching this filter ("a creature you control"). */
   sharesCreatureTypeWith?: Filter;
   power?: Compare;
+  /** Power less than the ability's source's (mentor: "with lesser power"). */
+  powerBelowSource?: boolean;
   toughness?: Compare;
   manaValue?: Compare;
+  /** On the stack: a spell or ability with exactly one target (Bolt Bend); abilities count too. */
+  singleTarget?: boolean;
   /** Default battlefield. */
   zone?: 'battlefield' | 'graveyard' | 'hand' | 'stack' | 'exile' | 'library';
 }
@@ -94,7 +98,9 @@ export type Amount =
   /** `n` when the condition holds, else 0 ("costs {2} less if a creature left the battlefield …"). */
   | { when: Condition; n: number }
   /** What happened this turn: players who discarded a card, permanents the controller sacrificed. */
-  | { thisTurn: 'playersWhoDiscarded' | 'youSacrificed' }
+  | { thisTurn: 'playersWhoDiscarded' | 'youSacrificed' | 'cardsYouDrew' }
+  /** Storm (702.40): the spells cast this turn before the source spell. */
+  | 'spellsCastBefore'
   | { times: Amount; by: number }
   | { plus: Amount; and: number };
 
@@ -111,6 +117,8 @@ export type Condition =
   | 'sourceWasCast'
   /** The source attacked this turn ("if this creature didn't attack this turn"). */
   | 'sourceAttackedThisTurn'
+  /** The objects chosen for a target spec share a creature type ("two target creatures … that share a creature type"). */
+  | { targetsShareCreatureType: number }
   /** One amount compared with another ("if its power is less than or equal to the sacrificed creature's power"). */
   | { compare: Amount; op: '<=' | '>=' | '=='; with: Amount }
   /** "If you've drawn two or more cards this turn". */
@@ -211,6 +219,8 @@ export interface ActivatedAbility {
   exhaust?: boolean;
   /** Mana with a rider (Animal Attendant): spent on a spell matching `spentOn`, that permanent enters with an extra counter. */
   rider?: { spentOn: Filter; counter: string };
+  /** "Spend this mana only to cast a Lesson or Shrine spell": a mana ability whose mana pays only for spells matching this. */
+  spendOnly?: Filter;
   /** Where the card must be to activate it; default the battlefield (cycling: the hand). */
   zone?: 'hand' | 'graveyard';
   text: string;

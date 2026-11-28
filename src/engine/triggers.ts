@@ -131,6 +131,12 @@ export function fire(s: GameState, ev: GameEventKind): void {
     return true;
   };
   const attackTriggered: GameEventKind[] = [];
+  // "When you cast this spell" (storm, 702.40): the spell's own cast trigger, from the stack.
+  const spell = ev.kind === 'cast' ? s.objects[ev.object] : undefined;
+  if (spell) for (const [index, t] of triggeredAbilities(s, spell, v)) {
+    if (!t.self || !('cast' in t.when) || !consider(t, { controller: spell.controller, source: spell.id, ...about, ...amount }, true)) continue;
+    s.pendingTriggers.push({ controller: spell.controller, source: spell.id, sourceName: v(spell).name, card: spell.card, index, ...about, ...amount });
+  }
   for (const id of s.zones.battlefield) {
     const o = s.objects[id]!;
     for (const [index, t] of triggeredAbilities(s, o, v)) {

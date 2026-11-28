@@ -3,7 +3,7 @@
  * waterbend their artifacts and creatures), the solver's answer for a cost, and paying it. Players
  * never tap lands by hand: the engine pays, and the UI previews what a payment will tap.
  */
-import type { Effect } from './abilities';
+import type { Effect, Filter } from './abilities';
 import { characteristics, isType, summoningSick, view } from './characteristics';
 import { amount, holds, matches, select, type Context } from './evaluate';
 import { manaValue, parseCost, solvePayment, type ManaSource } from './mana';
@@ -35,14 +35,24 @@ function manaYield(s: GameState, id: ObjectId, effects: Effect[]): { makes: (Col
   return { makes, n };
 }
 
+/** Whether the card about to be cast (anywhere: hand, library, exile) matches a mana ability's spending restriction. */
+function spentOn(s: GameState, source: ObjectId, only: Filter, spell?: ObjectId): boolean {
+  const o = spell ? s.objects[spell] : undefined;
+  if (!o) return false;
+  const zone = (o.zone.includes('.') ? o.zone.split('.')[1] : o.zone) as NonNullable<Filter['zone']>;
+  return matches(s, view(s), o, { ...only, zone }, { controller: obj(s, source).controller, source });
+}
+
 /** What a permanent makes by tapping alone: basic land types (305.6) and "{T}: Add …" abilities. */
-export function tapForMana(s: GameState, id: ObjectId): { makes: (Color | 'C')[]; n: number } | null {
+export function tapForMana(s: GameState, id: ObjectId, forSpell?: ObjectId): { makes: (Color | 'C')[]; n: number } | null {
   const c = characteristics(s, obj(s, id));
   const basic = c.subtypes.map((t) => BASIC_MANA[t]).filter((m): m is Color => !!m);
   let n = basic.length ? 1 : 0;
   const scripted: (Color | 'C')[] = [];
   if (!c.abilitiesRemoved) for (const a of activatedOf(s, id)) {
     if (!a.mana || !a.cost.tap || a.cost.mana || a.cost.sacrificeSelf || a.cost.payLife) continue;
+    // "Spend this mana only to cast a Lesson or Shrine spell": only while paying for one, never floated.
+    if (a.spendOnly && !spentOn(s, id, a.spendOnly, forSpell)) continue;
     const y = manaYield(s, id, a.effects);
     scripted.push(...y.makes);
     n = Math.max(n, y.n);
@@ -58,7 +68,7 @@ export function tapForMana(s: GameState, id: ObjectId): { makes: (Color | 'C')[]
  * then untapped mana sources. For a waterbend cost, also each untapped artifact and creatures not
  * already a mana source, paying generic only (701.67; like convoke, summoning sickness doesn't matter).
  */
-export function manaSources(s: GameState, p: PlayerId, opts: { waterbend?: boolean } = {}): ManaSource[] {
+export function manaSources(s: GameState, p: PlayerId, opts: { waterbend?: boolean; forSpell?: ObjectId } = {}): ManaSource[] {
   const out: ManaSource[] = [];
   for (const [prefix, pool] of [['pool', s.players[p].pool], ['combat', s.players[p].combatPool]] as const) {
     for (const c of [...COLORS, 'C'] as const) for (let i = 0; i < pool[c]; i++) out.push({ id: `${prefix}:${c}:${i}`, makes: [c], floating: true });
@@ -67,7 +77,7 @@ export function manaSources(s: GameState, p: PlayerId, opts: { waterbend?: boole
   for (const o of controlledBy(s, p)) {
     if (o.tapped) continue;
     if (isType(s, o, 'Creature') && summoningSick(s, o)) continue;
-    const t = tapForMana(s, o.id);
+    const t = tapForMana(s, o.id, opts.forSpell);
     if (!t) continue;
     // A source that makes two mana is two units of one tap: "id", then "id#1".
     for (let k = 0; k < t.n; k++) out.push({ id: k ? `${o.id}#${k}` : o.id, makes: t.makes });
@@ -100,9 +110,9 @@ export function manaSources(s: GameState, p: PlayerId, opts: { waterbend?: boole
  * A cost's mana and waterbend parts as one cost to solve, and the sources that may pay it. The
  * ability's own source is excluded when the cost taps it, and otherwise tapped for waterbend last.
  */
-export function costToPay(s: GameState, p: PlayerId, mana: ManaSymbol[], waterbend = 0, source?: ObjectId, tapsSource = false) {
+export function costToPay(s: GameState, p: PlayerId, mana: ManaSymbol[], waterbend = 0, source?: ObjectId, tapsSource = false, forSpell?: ObjectId) {
   const cost: ManaSymbol[] = waterbend ? [...mana, { kind: 'generic', amount: waterbend }] : mana;
-  const all = manaSources(s, p, { waterbend: waterbend > 0 }).filter((m) => !(tapsSource && (m.id === source || m.id === `wb:${source}`)));
+  const all = manaSources(s, p, { waterbend: waterbend > 0, ...(forSpell ? { forSpell } : {}) }).filter((m) => !(tapsSource && (m.id === source || m.id === `wb:${source}`)));
   const own = all.filter((m) => m.id === `wb:${source}`);
   const sources = [...all.filter((m) => m.id !== `wb:${source}`), ...own];
   const plain = solvePayment(cost, sources);
@@ -173,7 +183,7 @@ export function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0, opt
   const o = obj(s, id);
   // Another player's exiled card cast by permission: free, or by waterbending its mana value (Hama).
   if (o.castableBy?.player === p && o.zone.endsWith('.exile')) {
-    return costToPay(s, p, [], o.castableBy.cost === 'free' ? 0 : manaValue(printed(s, o).manaCost));
+    return costToPay(s, p, [], o.castableBy.cost === 'free' ? 0 : manaValue(printed(s, o).manaCost), undefined, false, id);
   }
   const spell = spellOf(s, id);
   const printedCost = o.zone.endsWith('.exile') && o.airbended ? parseCost('{2}')
@@ -194,7 +204,7 @@ export function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0, opt
   const reduced = cost.map((m): ManaSymbol => { if (m.kind !== 'generic' || off <= 0) return m; const take = Math.min(off, m.amount); off -= take; return { kind: 'generic', amount: m.amount - take }; });
   const chosen = option !== undefined ? spell?.costOptions?.[option]?.cost : undefined;
   const extraMana = [extra?.mana, chosen?.mana].filter((m): m is string => !!m);
-  return costToPay(s, p, [...reduced, ...extraMana.flatMap(parseCost)], waterbendOf(extra, x) + waterbendOf(chosen, x));
+  return costToPay(s, p, [...reduced, ...extraMana.flatMap(parseCost)], waterbendOf(extra, x) + waterbendOf(chosen, x), undefined, false, id);
 }
 
 /** A cost's waterbend amount: its number, or X ("waterbend {X}"). */

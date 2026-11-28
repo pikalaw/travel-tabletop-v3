@@ -104,8 +104,12 @@ export interface GameObject {
   notLegendary?: boolean;
   /** A copy of a spell on the stack (Jeong Jeong): it ceases to exist as it leaves the stack (707.10). */
   spellCopy?: boolean;
-  /** Cast with flashback: exiled instead of going anywhere else as it leaves the stack (702.34). */
-  flashback?: boolean;
+  /** Exiled instead of going anywhere else as it leaves the stack: cast with flashback (702.34), or by Storm of Memories. */
+  exileFromStack?: boolean;
+  /** "Gains flashback until end of turn" (Lost in Memories): the turn it has it, its flashback cost its mana cost. */
+  flashbackThisTurn?: number;
+  /** This spell was the n-th cast this turn, counting every player's (storm, 702.40). */
+  castNumber?: number;
   /** This permanent was cast ("if you cast them"), not put onto the battlefield otherwise. */
   wasCast?: boolean;
   /**
@@ -245,7 +249,7 @@ export type Decision =
   /** Divide `total` (counters, damage) among `options`, each getting any number, all of it given out. */
   | { kind: 'distribute'; player: PlayerId; options: ObjectId[]; total: number; text: string }
   /** "You may cast a … spell from your hand without paying its mana cost": a cast of one of `options`, or no. */
-  | { kind: 'castFree'; player: PlayerId; options: ObjectId[] };
+  | { kind: 'castFree'; player: PlayerId; options: ObjectId[]; exileAfter?: boolean };
 
 export type Choice =
   | { kind: 'keep' }
@@ -350,6 +354,8 @@ export interface GameState {
     attacked: Record<PlayerId, boolean>; lifeLost: Record<PlayerId, number>; drawn: Record<PlayerId, number>; tapped: Record<ObjectId, number>;
     /** Lands that entered under each player's control, and creature spells each player cast. */
     landsEntered: Record<PlayerId, number>; creatureSpells: Record<PlayerId, number>;
+    /** Spells cast this turn, by any player (storm). */
+    spells: number;
     /** Cards each player discarded, permanents each sacrificed, and creatures that left the battlefield under each one's control. */
     discarded: Record<PlayerId, number>; sacrificed: Record<PlayerId, number>; creaturesLeft: Record<PlayerId, number>;
     /** Creatures that attacked this turn. */

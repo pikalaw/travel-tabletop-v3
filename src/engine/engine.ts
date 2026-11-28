@@ -4,7 +4,7 @@
  * `answer` checks a choice, applies it, and runs forward until the rules need the next choice.
  * The engine always gives priority as the rules say: passing for players is the controller's job.
  */
-import type { ActivatedAbility, Effect, TargetSpec } from './abilities';
+import type { ActivatedAbility, TargetSpec } from './abilities';
 import { characteristics, isType, summoningSick, view } from './characteristics';
 import { attackers, canAttack, canBlock, checkAttack, checkBlocks, checkSplit, dealCombatDamage, declareAttackers, declareBlockers, endCombat, hasFirstStrikeStep, splitsToAsk } from './combat';
 import { runEffects } from './effects';
@@ -20,13 +20,14 @@ import { fire, triggeredAbility } from './triggers';
 import type { Choice, Decision, GameObject, GameSetup, GameState, ObjectId, PendingTrigger, PlayerId, Refusal, Step, Target, ZoneId } from './types';
 import { COLORS, PLAYERS, STEPS, other } from './types';
 import { addCounters, discardCard, leaveBattlefield, putOntoBattlefield, sacrifice, tap } from './zones';
+import { onStack, spellAbility } from './stack';
 
 const HAND_SIZE = 7;
 const STARTING_LIFE = 20;
 const PERMANENT_TYPES = ['Creature', 'Artifact', 'Enchantment', 'Planeswalker', 'Battle'];
 
 const playerName = (s: GameState, p: PlayerId) => s.setup.players[p].name;
-const freshTurnLog = (): GameState['turnLog'] => ({ attacked: { p1: false, p2: false }, lifeLost: { p1: 0, p2: 0 }, drawn: { p1: 0, p2: 0 }, tapped: {}, landsEntered: { p1: 0, p2: 0 }, creatureSpells: { p1: 0, p2: 0 }, discarded: { p1: 0, p2: 0 }, sacrificed: { p1: 0, p2: 0 }, creaturesLeft: { p1: 0, p2: 0 }, attackers: [] });
+const freshTurnLog = (): GameState['turnLog'] => ({ attacked: { p1: false, p2: false }, lifeLost: { p1: 0, p2: 0 }, drawn: { p1: 0, p2: 0 }, tapped: {}, landsEntered: { p1: 0, p2: 0 }, creatureSpells: { p1: 0, p2: 0 }, spells: 0, discarded: { p1: 0, p2: 0 }, sacrificed: { p1: 0, p2: 0 }, creaturesLeft: { p1: 0, p2: 0 }, attackers: [] });
 const nameOf = (s: GameState, id: ObjectId) => characteristics(s, obj(s, id)).name;
 const ctxFor = (p: PlayerId, source: ObjectId): Context => ({ controller: p, source });
 const hand = (s: GameState, p: PlayerId) => s.zones[zoneOf(p, 'hand')];
@@ -95,32 +96,6 @@ export function whyNotPlay(s: GameState, p: PlayerId, id: ObjectId): string | nu
   return null;
 }
 
-/** Shifts every {target: n} in effects by `by`, so a mode's local target indices fit the whole spell. */
-function shiftTargets<T>(v: T, by: number): T {
-  if (Array.isArray(v)) return v.map((x) => shiftTargets(x, by)) as T;
-  if (v && typeof v === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, x] of Object.entries(v)) out[k] = (k === 'target' || k === 'controlledByTarget') && typeof x === 'number' ? x + by : shiftTargets(x, by);
-    return out as T;
-  }
-  return v;
-}
-
-/** A spell's target specs and effects; for a modal spell, those of the chosen modes, in order. */
-export function spellAbility(s: GameState, id: ObjectId, modes?: number[]): { specs: TargetSpec[]; effects: Effect[] } {
-  const spell = spellOf(s, id);
-  if (spell?.enchant) return { specs: [{ objects: spell.enchant }], effects: [] };
-  if (!spell?.modes) return { specs: spell?.targets ?? [], effects: spell?.effects ?? [] };
-  const specs: TargetSpec[] = [];
-  const effects: Effect[] = [];
-  for (const m of modes ?? []) {
-    const mode = spell.modes.options[m]!;
-    effects.push(...shiftTargets(mode.effects, specs.length));
-    specs.push(...(mode.targets ?? []));
-  }
-  return { specs, effects };
-}
-
 function checkModes(s: GameState, id: ObjectId, modes?: number[]): string | null {
   const m = spellOf(s, id)?.modes;
   if (!m) return modes?.length ? 'This spell has no modes' : null;
@@ -140,7 +115,7 @@ export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Ta
   const o = s.objects[id];
   const fromExile = !!o && ((o.zone === zoneOf(p, 'exile') && o.owner === p && (!!o.airbended || playableFromExile(s, p, o))) || castableFromExile(s, p, o));
   const fromLibrary = !!o && castableFromLibraryTop(s, p, id);
-  const fromGraveyard = !!o && o.zone === zoneOf(p, 'graveyard') && !!spellOf(s, id)?.flashback;
+  const fromGraveyard = !!o && o.zone === zoneOf(p, 'graveyard') && hasFlashback(s, id);
   if (!o || (o.zone !== zoneOf(p, 'hand') && !fromExile && !fromLibrary && !fromGraveyard)) return 'Not in your hand';
   if (isType(s, o, 'Land')) return 'Lands are played, not cast';
   const spellDef = spellOf(s, id);
@@ -224,6 +199,23 @@ export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: n
   if (!hasTargets(s, a.targets ?? [], ctxFor(p, id))) return 'No legal target';
   return targets === undefined ? null : checkTargets(s, a.targets ?? [], targets, ctxFor(p, id));
 }
+
+/** A spell moves to the stack as it's cast (601.2a), counted for "creature spells you cast this turn" and storm. */
+function toStack(s: GameState, p: PlayerId, id: ObjectId): GameObject {
+  if (isType(s, obj(s, id), 'Creature')) s.turnLog.creatureSpells[p]++;
+  const spell = move(s, id, 'stack', { controller: p });
+  spell.castNumber = ++s.turnLog.spells;
+  return spell;
+}
+
+/** A spell becomes cast (601.2i): cast triggers, then "becomes the target" ones. */
+function cast(s: GameState, p: PlayerId, id: ObjectId): void {
+  fire(s, { kind: 'cast', object: id, player: p });
+  targeted(s, id);
+}
+
+/** A graveyard card with flashback: printed, or granted this turn (Lost in Memories). */
+export const hasFlashback = (s: GameState, id: ObjectId) => !!spellOf(s, id)?.flashback || s.objects[id]?.flashbackThisTurn === s.turn;
 
 /**
  * Every choice the waiting player may make now, where the choices can be listed. Casts and
@@ -438,11 +430,11 @@ function apply(s: GameState, d: Decision, c: Choice): string | null {
       const bad = checkModes(s, c.object, c.modes) ?? checkTargets(s, spellAbility(s, c.object, c.modes).specs, c.targets ?? [], ctxFor(p, c.object));
       if (bad) return bad;
       event(s, `${playerName(s, p)} casts ${nameOf(s, c.object)} without paying its mana cost${describeTargets(s, c.targets)}`);
-      const spell = move(s, c.object, 'stack', { controller: p });
+      const spell = toStack(s, p, c.object);
+      if (d.exileAfter) spell.exileFromStack = true;
       spell.targets = c.targets ?? [];
       if (c.modes) spell.modes = c.modes;
-      fire(s, { kind: 'cast', object: spell.id, player: p });
-      targeted(s, spell.id);
+      cast(s, p, spell.id);
       s.resolving!.castFreeAnswered = true;
       continueResolving(s);
       return null;
@@ -530,10 +522,9 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       pay(s, p, sources);
       payCostChoices(s, p, choices, c.sacrificing, c.discarding);
       usedPermission(s, obj(s, c.object));
-      if (isType(s, obj(s, c.object), 'Creature')) s.turnLog.creatureSpells[p]++;
       const flashback = obj(s, c.object).zone.endsWith('.graveyard');
-      const spell = move(s, c.object, 'stack', { controller: p });
-      if (flashback) spell.flashback = true;
+      const spell = toStack(s, p, c.object);
+      if (flashback) spell.exileFromStack = true;
       spell.targets = c.targets ?? [];
       if (c.modes) spell.modes = c.modes;
       if (c.x !== undefined) spell.x = x;
@@ -543,8 +534,7 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       if (Object.keys(extra).length) spell.entersWithCounters = extra;
       s.passes = 0;
       usedFirstReductions(s, p, spell.id);
-      fire(s, { kind: 'cast', object: spell.id, player: p }); // 601.2i
-      targeted(s, spell.id);
+      cast(s, p, spell.id);
       return null;
     }
     case 'activate': {
@@ -665,23 +655,14 @@ function resolveTop(s: GameState): void {
   const id = s.zones.stack[s.zones.stack.length - 1]!;
   const o = obj(s, id);
   const a = o.ability;
-  let effects: Effect[];
-  let specs: TargetSpec[];
-  const source = a ? a.source : id;
-  const ctx: Context = { controller: o.controller, source, ...(a?.eventObject ? { eventObject: a.eventObject } : {}), ...(a?.eventAmount !== undefined ? { eventAmount: a.eventAmount } : {}), ...(a?.eventSource ? { eventSource: a.eventSource } : {}), ...(o.x !== undefined ? { x: o.x } : {}) };
+  const { effects, specs, ctx, condition } = onStack(s, id);
+  const source = ctx.source;
   const label = a ? `${a.sourceName}'s ability` : nameOf(s, id);
-  if (a) {
-    const def = a.kind === 'activated' ? s.setup.cards[o.card]!.script!.activated![a.index]! : triggeredAbility(s, o.card, a.index);
-    effects = def.effects;
-    specs = def.targets ?? [];
-    // 603.4: an intervening "if" is checked again on resolution; if false, the ability does nothing.
-    if (a.kind === 'triggered' && 'if' in def && def.if && !holds(s, view(s), def.if, ctx)) {
-      removeFromStack(s, id);
-      s.priority = s.active;
-      return;
-    }
-  } else {
-    ({ effects, specs } = spellAbility(s, id, o.modes));
+  // 603.4: an intervening "if" is checked again on resolution; if false, the ability does nothing.
+  if (condition && !holds(s, view(s), condition, ctx)) {
+    removeFromStack(s, id);
+    s.priority = s.active;
+    return;
   }
   // 608.2b: targets are checked again; with every one illegal, the spell or ability does nothing.
   const chosen = o.targets ?? [];
@@ -850,3 +831,4 @@ function skip(s: GameState): void {
 
 export { castableFromLibraryTop, castCost, costChoices, libraryTopSeen } from './costs';
 export { manaSources, paymentPreview, tapForMana } from './payment';
+export { spellAbility } from './stack';

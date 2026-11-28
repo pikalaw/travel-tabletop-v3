@@ -97,6 +97,9 @@ export function computeAll(s: GameState): Map<ObjectId, Characteristics> {
   return map;
 }
 
+/** Counters that are keywords (122.1b). */
+const KEYWORD_COUNTERS = ['flying', 'first strike', 'double strike', 'deathtouch', 'haste', 'hexproof', 'indestructible', 'lifelink', 'menace', 'reach', 'trample', 'vigilance'];
+
 function compute(s: GameState): Map<ObjectId, Characteristics> {
   const map = new Map<ObjectId, Characteristics>();
   // Permanents, and spells on the stack ("Lesson spells you control have lifelink").
@@ -127,6 +130,11 @@ function compute(s: GameState): Map<ObjectId, Characteristics> {
     if (a.effect.removeKeywords) c.keywords = c.keywords.filter((k) => !a.effect.removeKeywords!.includes(k));
     for (const k of a.effect.addKeywords ?? []) if (!c.keywords.includes(k)) c.keywords.push(k);
   });
+  // 122.1b: a keyword counter gives the permanent that keyword (Mai's double strike counter).
+  for (const [id, c] of map) {
+    if (c.abilitiesRemoved) continue;
+    for (const [kind, n] of Object.entries(s.objects[id]!.counters)) if (n > 0 && KEYWORD_COUNTERS.includes(kind) && !c.keywords.includes(kind)) c.keywords.push(kind);
+  }
   // Layer 7a: characteristic-defining abilities.
   each((e) => e.cdaPower !== undefined, (c, a) => {
     c.power = amount(s, view, a.effect.cdaPower!, a.ctx);
