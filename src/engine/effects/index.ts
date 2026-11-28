@@ -15,6 +15,10 @@ import { continuous, exileIfWouldDie, grant, pump, type Continuous, type ExileIf
 import { counterSpell, counterUnlessPays, type CounterSpell, type CounterUnlessPays } from './counter-spell';
 import { addCounters, putCountersOf, removeAnyCounters, removeCounters, type AddCounters, type PutCountersOf, type RemoveAnyCounters, type RemoveCounters } from './counters';
 import { damage, type Damage } from './damage';
+import { delayed, reflexive, type Delayed, type Reflexive } from './delayed';
+import { eachDeals, type EachDeals } from './each-deals';
+import { playerCounter, type PlayerCounter } from './player-counters';
+import { topCard, type TopCard } from './top-card';
 import { discard, type Discard } from './discard';
 import { draw, type Draw } from './draw';
 import { earthbend, type Earthbend } from './earthbend';
@@ -44,7 +48,8 @@ export type Effect =
   | CreateToken | AddMana | Earthbend | Airbend | ReturnToBattlefield | Attach
   | Mill | ExileTopPlayable | ShuffleIntoLibrary | Scry | Surveil | Search | LookAtTop | RevealAndDiscard
   | ExtraLand | Optional | Fight | CounterSpell | CounterUnlessPays
-  | May | UnlessPays | If;
+  | May | UnlessPays | If
+  | Delayed | Reflexive | EachDeals | PlayerCounter | TopCard;
 
 const HANDLERS = {
   draw, discard, damage, gainLife, loseLife,
@@ -55,6 +60,7 @@ const HANDLERS = {
   mill, exileTopPlayable, shuffleIntoLibrary, scry, surveil, search, lookAtTop, revealAndDiscard,
   extraLand, optional, fight, counterSpell, counterUnlessPays,
   may, unlessPays, if: conditional,
+  delayed, reflexive, eachDeals, playerCounter, topCard,
 } satisfies Record<string, Handler<never>>;
 
 type Key = keyof typeof HANDLERS;

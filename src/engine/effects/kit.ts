@@ -47,7 +47,7 @@ export const isPlayer = (t: Target): t is PlayerId => t === 'p1' || t === 'p2';
 
 function contextOf(s: GameState): Context {
   const r = s.resolving!;
-  return { controller: r.controller, source: r.source, targets: r.targets, ...(r.eventObject ? { eventObject: r.eventObject } : {}), ...(r.x !== undefined ? { x: r.x } : {}), ...(r.created ? { created: r.created } : {}), ...(r.attachedTo ? { attachedTo: r.attachedTo } : {}) };
+  return { controller: r.controller, source: r.source, targets: r.targets, ...(r.eventObject ? { eventObject: r.eventObject } : {}), ...(r.eventAmount !== undefined ? { eventAmount: r.eventAmount } : {}), ...(r.x !== undefined ? { x: r.x } : {}), ...(r.created ? { created: r.created } : {}), ...(r.attachedTo ? { attachedTo: r.attachedTo } : {}) };
 }
 
 /** The Resolution for the effect at s.resolving.pc, with the answer to its decision if there is one. */

@@ -23,6 +23,7 @@ export function canBlock(s: GameState, blocker: GameObject, attacker: GameObject
   if (attacker.attacking === undefined || hasKeyword(s, blocker, "can't attack or block")) return false;
   if (hasKeyword(s, attacker, 'flying') && !hasKeyword(s, blocker, 'flying') && !hasKeyword(s, blocker, 'reach')) return false;
   if (hasKeyword(s, attacker, "can't be blocked")) return false;
+  if (hasKeyword(s, attacker, "can't be blocked by creatures with power 2 or less") && characteristics(s, blocker).power <= 2) return false;
   // The Spirit tokens: "can't block or be blocked by non-Spirit creatures".
   const SPIRIT_ONLY = "can't block or be blocked by non-spirit creatures";
   const spirit = (o: GameObject) => characteristics(s, o).subtypes.includes('Spirit');

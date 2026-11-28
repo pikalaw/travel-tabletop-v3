@@ -100,10 +100,10 @@ function compute(s: GameState): Map<ObjectId, Characteristics> {
   const view: View = (o) => map.get(o.id) ?? printedChars(s, o);
   const removed = removedAbilities(s, view);
   const effects = effectsInForce(s, removed);
-  const each = (pick: (e: Continuous) => boolean, apply: (c: Characteristics, a: Applied) => void) => {
+  const each = (pick: (e: Continuous) => boolean, apply: (c: Characteristics, a: Applied, o: GameObject) => void) => {
     for (const a of effects) {
       if (!pick(a.effect) || !a.active(view)) continue;
-      for (const o of a.affected(view)) { const c = map.get(o.id); if (c) apply(c, a); }
+      for (const o of a.affected(view)) { const c = map.get(o.id); if (c) apply(c, a, o); }
     }
   };
   // Layer 3: text (names).
@@ -117,8 +117,9 @@ function compute(s: GameState): Map<ObjectId, Characteristics> {
   });
   // Layer 6: ability-adding and ability-removing effects, in timestamp order.
   for (const id of removed) { const c = map.get(id); if (c) c.abilitiesRemoved = true; }
-  each((e) => !!(e.addKeywords || e.removeAllAbilities), (c, a) => {
-    if (a.effect.removeAllAbilities) c.keywords = [];
+  each((e) => !!(e.addKeywords || e.removeAllAbilities || e.anyColorMana), (c, a) => {
+    if (a.effect.removeAllAbilities) { c.keywords = []; delete c.anyColorMana; }
+    if (a.effect.anyColorMana) c.anyColorMana = true;
     for (const k of a.effect.addKeywords ?? []) if (!c.keywords.includes(k)) c.keywords.push(k);
   });
   // Layer 7a: characteristic-defining abilities.
@@ -133,8 +134,10 @@ function compute(s: GameState): Map<ObjectId, Characteristics> {
     c.parts.push({ label: `set by ${a.label}`, power: c.power, toughness: c.toughness, set: true });
   });
   // Layer 7c: effects that modify power and toughness, and counters.
-  each((e) => !!e.modify, (c, a) => {
-    const dp = amount(s, view, a.effect.modify![0], a.ctx), dt = amount(s, view, a.effect.modify![1], a.ctx);
+  each((e) => !!e.modify, (c, a, o) => {
+    // An amount may be about the object it's applied to ("+1/+1 for each of its creature types").
+    const ctx = { ...a.ctx, affected: o.id };
+    const dp = amount(s, view, a.effect.modify![0], ctx), dt = amount(s, view, a.effect.modify![1], ctx);
     c.power += dp; c.toughness += dt;
     c.parts.push({ label: `from ${a.label}`, power: dp, toughness: dt });
   });

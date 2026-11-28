@@ -163,7 +163,7 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
   // ----- what the board marks
   let marks: Marks = { ...EMPTY, glow, fresh: shown ? newInHand(session, me) : new Set() };
   if (!off && need?.kind === 'target') marks = { ...marks, selectable: new Set(need.legal), selected: new Set(picking) };
-  else if (!off && need?.kind === 'tap') marks = { ...marks, selectable: new Set(need.options), selected: new Set(picking) };
+  else if (!off && (need?.kind === 'tap' || need?.kind === 'sacrifice')) marks = { ...marks, selectable: new Set(need.options), selected: new Set(picking) };
   else if (!off && preview) marks = { ...marks, paying: new Set(preview.tapped) };
   else if (!off && !intent && d) {
     switch (d.kind) {
@@ -194,6 +194,7 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
     if (off) return;
     if (intent && need?.kind === 'target') { pickTarget(t); return; }
     if (intent && need?.kind === 'tap') { setIntent({ ...intent, tapping: [t] }); return; }
+    if (intent && need?.kind === 'sacrifice') { setIntent({ ...intent, sacrificing: [t] }); return; }
     if (!d) return;
     switch (d.kind) {
       case 'attackers': setAtk((a) => { const n = new Set(a); if (n.has(t)) n.delete(t); else n.add(t); return n; }); return;

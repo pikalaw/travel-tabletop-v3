@@ -20,6 +20,7 @@ export interface Filter {
   allTypes?: string[];       // every one of these ("land creature")
   token?: boolean;           // a token, or (false) a nontoken
   subtypes?: string[];       // any of these subtypes
+  notSubtypes?: string[];
   supertypes?: string[];
   notTypes?: string[];
   controller?: 'you' | 'opponent';
@@ -32,12 +33,15 @@ export interface Filter {
   keyword?: string;
   notKeyword?: string;
   colors?: Color[];          // any of these colours
+  /** Has a counter of this kind ("*": any counter). */
   withCounter?: string;
   noCounters?: boolean;
   /** Any of these filters (for "attacking or blocking creature"); combined with the fields above. */
   anyOf?: Filter[];
   /** Controlled by the player chosen for the n-th target spec ("creatures target player controls"). */
   controlledByTarget?: number;      // has at least one counter of this kind
+  /** Shares a creature type with an object matching this filter ("a creature you control"). */
+  sharesCreatureTypeWith?: Filter;
   power?: Compare;
   toughness?: Compare;
   manaValue?: Compare;
@@ -53,7 +57,8 @@ export type ObjectRef =
   | { all: Filter }
   | 'triggerObject'                  // the object the trigger's event is about
   | 'attachedTo'                     // what this Aura or Equipment is attached to
-  | 'created';                       // the token this effect list created last ("put a counter on it")
+  | 'created'                        // the token this effect list created last ("put a counter on it")
+  | 'affected';                      // in a static effect's amount: the object it's being applied to ("each of its creature types")
 
 // ----- Numbers ---------------------------------------------------------------------------------
 
@@ -65,6 +70,12 @@ export type Amount =
   | { powerOf: ObjectRef }
   | { manaValueOf: ObjectRef }
   | 'x'
+  /** "That much": the amount the trigger's event was about (counters put). */
+  | 'eventAmount'
+  /** Counters of a kind on the ability's controller (experience). */
+  | { playerCounters: string }
+  /** How many creature types an object has, up to `max` (after type-changing effects). */
+  | { creatureTypesOf: ObjectRef; max?: number }
   | { times: Amount; by: number }
   | { plus: Amount; and: number };
 
@@ -80,6 +91,8 @@ export type Condition =
   | { not: Condition }
   | { all: Condition[] }
   | 'yourTurn'
+  /** The trigger's object became tapped for the first time this turn. */
+  | 'firstTapThisTurn'
   | { exists: Filter };
 
 // ----- Durations -------------------------------------------------------------------------------
@@ -110,6 +123,8 @@ export interface Cost {
   payLife?: number;
   /** "Tap an untapped creature you control" (not {T}: summoning sickness doesn't matter). */
   tapAnother?: Filter;
+  /** "Sacrifice an artifact or creature": the caster chooses one matching this filter. */
+  sacrifice?: Filter;
 }
 
 /** One mode of a modal spell (700.2): its own targets and effects, target indices local to it. */
@@ -124,6 +139,8 @@ export interface SpellAbility {
   modes?: { min: number; max: number; options: Mode[] };
   /** An additional cost to cast it (601.2f), such as "waterbend {5}". */
   additionalCost?: Cost;
+  /** "As an additional cost, pay {4} or sacrifice an artifact or creature": the caster chooses one (601.2b). */
+  costOptions?: { cost: Cost; text: string }[];
   /** "This spell costs {1} less to cast for each …" (601.2f): generic reduced, never below zero. */
   reduceBy?: Amount;
   /** "You may cast this spell as though it had flash if …" */
@@ -141,6 +158,8 @@ export interface ActivatedAbility {
   mana?: boolean;
   /** Exhaust (702.177): activate each only once. */
   exhaust?: boolean;
+  /** Mana with a rider (Animal Attendant): spent on a spell matching `spentOn`, that permanent enters with an extra counter. */
+  rider?: { spentOn: Filter; counter: string };
   /** Where the card must be to activate it; default the battlefield (cycling: the hand). */
   zone?: 'hand' | 'graveyard';
   text: string;
@@ -158,7 +177,11 @@ export type TriggerEvent =
   /** "Whenever you draw your second card each turn". */
   | { drawsNth: number }
   /** A permanent put into a graveyard from the battlefield, creature or not. */
-  | { toGraveyard: Filter };
+  | { toGraveyard: Filter }
+  /** "Whenever you put one or more +1/+1 counters on a creature": counters of `kind` put by an effect `you` control. */
+  | { countersPut: Filter; kind: string }
+  /** A reflexive trigger's (603.12): it never matches an event; its effect puts it on the stack. */
+  | { reflexive: true };
 
 export interface TriggeredAbility {
   when: TriggerEvent;
@@ -166,6 +189,8 @@ export interface TriggeredAbility {
   self?: boolean;
   /** Part of the trigger event, checked only as it triggers ("Whenever ~ and at least one other creature attack"). */
   onlyIf?: Condition;
+  /** "Whenever one or more …": one trigger for all the events that happen at once (one combat damage step, one declaration). */
+  oneOrMore?: boolean;
   /** An intervening "if" clause (603.4): checked when it triggers and again on resolution. */
   if?: Condition;
   targets?: TargetSpec[];
@@ -194,6 +219,8 @@ export interface Continuous {
   modify?: [Amount, Amount];
   /** Not a characteristic but a replacement with a duration: "if it would die this turn, exile it instead". */
   exileIfWouldDie?: boolean;
+  /** "Has '{T}: Add one mana of any color'" (Great Divide Guide): tapping it can make any colour. */
+  anyColorMana?: boolean;
   /** Earthbent: when this land dies or is exiled, it returns to the battlefield tapped (701.65). */
   earthbent?: boolean;
 }

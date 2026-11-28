@@ -19,7 +19,8 @@ export type GameEventKind =
   | { kind: 'becomesTapped'; object: ObjectId }
   | { kind: 'dealsCombatDamageToPlayer'; object: ObjectId }
   | { kind: 'drew'; player: PlayerId; nth: number }
-  | { kind: 'toGraveyard'; object: ObjectId };
+  | { kind: 'toGraveyard'; object: ObjectId }
+  | { kind: 'countersPut'; object: ObjectId; counter: string; n: number; player: PlayerId };
 
 /** The keyword library's triggered keywords (702): written once, used by every card that has them. */
 const KEYWORD_TRIGGERS: Record<string, TriggeredAbility> = {
@@ -43,6 +44,8 @@ export function triggeredAbilities(s: GameState, o: GameObject, v: View): [numbe
 
 /** Built-in delayed triggers, by index: the return of an earthbent land (701.65). */
 export const EARTHBEND_RETURN = 2000;
+/** Delayed and reflexive triggers created by effects: index DELAYED + k is s.delayed[k]. */
+export const DELAYED = 3000;
 const BUILT_IN: Record<number, TriggeredAbility> = {
   [EARTHBEND_RETURN]: {
     when: { leaves: {} }, effects: [{ returnToBattlefield: 'triggerObject', tapped: true }],
@@ -51,6 +54,7 @@ const BUILT_IN: Record<number, TriggeredAbility> = {
 };
 
 export function triggeredAbility(s: GameState, card: string, index: number): TriggeredAbility {
+  if (index >= DELAYED) return s.delayed[index - DELAYED]!.ability;
   if (BUILT_IN[index]) return BUILT_IN[index]!;
   if (index >= 1000) return KEYWORD_TRIGGERS[Object.keys(KEYWORD_TRIGGERS)[index - 1000]!]!;
   const t = s.setup.cards[card]?.script?.triggered?.[index];
@@ -77,24 +81,37 @@ function eventMatches(s: GameState, v: View, w: TriggerEvent, self: boolean | un
   }
   if ('drawsNth' in w) return ev.kind === 'drew' && ev.player === ctx.controller && ev.nth === w.drawsNth;
   if ('toGraveyard' in w) return ev.kind === 'toGraveyard' && filterOn(w.toGraveyard);
+  if ('countersPut' in w) return ev.kind === 'countersPut' && ev.counter === w.kind && ev.player === ctx.controller && filterOn(w.countersPut);
   if ('step' in w) return ev.kind === 'step' && ev.step === w.step && (w.whose === 'any' || s.active === ctx.controller);
   return false;
 }
 
-/** Reports an event: every matching triggered ability on the battlefield waits to go on the stack. */
+/** Reports an event: every matching triggered ability on the battlefield, and every delayed one, waits to go on the stack. */
 export function fire(s: GameState, ev: GameEventKind): void {
   const v = view(s);
+  const about = 'object' in ev ? { eventObject: ev.object } : {};
+  const amount = ev.kind === 'countersPut' ? { eventAmount: ev.n } : {};
+  const consider = (t: TriggeredAbility, ctx: Context, self: boolean | undefined) => {
+    if (!eventMatches(s, v, t.when, self, ev, ctx)) return false;
+    if (t.onlyIf && !holds(s, v, t.onlyIf, ctx)) return false;
+    if (t.if && !holds(s, v, t.if, ctx)) return false; // 603.4: the intervening "if" is checked as it triggers
+    return true;
+  };
   for (const id of s.zones.battlefield) {
     const o = s.objects[id]!;
     for (const [index, t] of triggeredAbilities(s, o, v)) {
-      const ctx: Context = { controller: o.controller, source: o.id, ...('object' in ev ? { eventObject: ev.object } : {}) };
-      if (!eventMatches(s, v, t.when, t.self, ev, ctx)) continue;
-      if (t.onlyIf && !holds(s, v, t.onlyIf, ctx)) continue;
-      if (t.if && !holds(s, v, t.if, ctx)) continue; // 603.4: the intervening "if" is checked as it triggers
-      s.pendingTriggers.push({
-        controller: o.controller, source: o.id, sourceName: v(o).name, card: o.card, index,
-        ...('object' in ev ? { eventObject: ev.object } : {}),
-      });
+      const ctx: Context = { controller: o.controller, source: o.id, ...about, ...amount };
+      if (!consider(t, ctx, t.self)) continue;
+      // "Whenever one or more …": the events that happen at once make one trigger.
+      if (t.oneOrMore && s.pendingTriggers.some((p) => p.source === o.id && p.index === index)) continue;
+      s.pendingTriggers.push({ controller: o.controller, source: o.id, sourceName: v(o).name, card: o.card, index, ...about, ...amount });
     }
   }
+  s.delayed.forEach((d, k) => {
+    if (d.done || (d.untilTurn !== undefined && s.turn > d.untilTurn)) return;
+    if (d.about && (!('object' in ev) || ev.object !== d.about)) return;
+    if (!consider(d.ability, { controller: d.controller, source: d.source, ...about, ...amount }, false)) return;
+    d.done = true; // "When that creature dies this turn": once
+    s.pendingTriggers.push({ controller: d.controller, source: d.source, sourceName: d.sourceName, card: d.card, index: DELAYED + k, ...about, ...amount });
+  });
 }

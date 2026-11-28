@@ -17,7 +17,7 @@ import { EARTHBEND_RETURN, fire } from './triggers';
 import type { GameObject, GameState, ObjectId, PlayerId } from './types';
 
 /** Puts an object (from any zone) onto the battlefield, as a new object (400.7). */
-export function putOntoBattlefield(s: GameState, id: ObjectId, controller: PlayerId, opts: { tapped?: boolean; attachTo?: ObjectId } = {}): ObjectId {
+export function putOntoBattlefield(s: GameState, id: ObjectId, controller: PlayerId, opts: EnterOptions = {}): ObjectId {
   return entered(s, move(s, id, 'battlefield', { controller }), opts);
 }
 
@@ -27,14 +27,18 @@ export function createToken(s: GameState, card: string, controller: PlayerId, op
   return entered(s, createObject(s, card, controller, 'battlefield'), opts);
 }
 
+/** How a permanent enters: tapped, attached, or with extra counters (Animal Attendant's mana). */
+interface EnterOptions { tapped?: boolean; attachTo?: ObjectId; counters?: Record<string, number> }
+
 /** What happens as a permanent enters: its own entering replacements (614.1c-d), then the event. */
-function entered(s: GameState, o: GameObject, opts: { tapped?: boolean; attachTo?: ObjectId }): ObjectId {
+function entered(s: GameState, o: GameObject, opts: EnterOptions): ObjectId {
   const reps = s.setup.cards[o.card]?.script?.replacements ?? [];
   if (opts.attachTo) o.attachedTo = opts.attachTo; // an Aura enters attached (303.4f)
   o.tapped = !!opts.tapped || reps.some((r) => 'entersTapped' in r.replace);
   o.controlledSince = s.turn;
   // Entering with counters is counters being put on it, so "that many plus one" applies too.
   for (const r of reps) if ('entersWithCounters' in r.replace) addCounters(s, o.id, r.replace.entersWithCounters, r.replace.n);
+  for (const [kind, n] of Object.entries(opts.counters ?? {})) addCounters(s, o.id, kind, n);
   fire(s, { kind: 'enters', object: o.id });
   return o.id;
 }
@@ -83,8 +87,8 @@ export function leaveBattlefield(s: GameState, ids: ObjectId[], to: 'graveyard' 
   return out;
 }
 
-/** Puts counters on a permanent, with "that many plus one" replacements (Solid Ground). */
-export function addCounters(s: GameState, id: ObjectId, kind: string, n: number): void {
+/** Puts counters on a permanent, with "that many plus one" replacements (Solid Ground). `by`: the player whose effect puts them. */
+export function addCounters(s: GameState, id: ObjectId, kind: string, n: number, by?: PlayerId): void {
   const o = s.objects[id];
   if (!o || n <= 0) return;
   const v = view(s);
@@ -101,6 +105,7 @@ export function addCounters(s: GameState, id: ObjectId, kind: string, n: number)
   }
   o.counters[kind] = (o.counters[kind] ?? 0) + total;
   event(s, `${v(o).name} gets ${total} ${kind} counter${total > 1 ? 's' : ''}`);
+  fire(s, { kind: 'countersPut', object: id, counter: kind, n: total, player: by ?? o.controller });
 }
 
 /** Taps a permanent, reporting it for "becomes tapped" triggers. */
@@ -108,5 +113,6 @@ export function tap(s: GameState, id: ObjectId): void {
   const o = s.objects[id];
   if (!o || o.tapped) return;
   o.tapped = true;
+  s.turnLog.tapped[id] = (s.turnLog.tapped[id] ?? 0) + 1;
   fire(s, { kind: 'becomesTapped', object: id });
 }

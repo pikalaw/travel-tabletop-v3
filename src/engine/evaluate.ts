@@ -16,6 +16,8 @@ export interface Characteristics {
   toughness: number;
   keywords: string[];
   colors: Color[];
+  /** Has "{T}: Add one mana of any color" from an effect (layer 6). */
+  anyColorMana?: boolean;
   /** Lost all abilities (layer 6): its static, triggered and activated abilities don't work. */
   abilitiesRemoved: boolean;
   /** Where power and toughness came from, in layer order (PRD, "Auto-tallied numbers"). */
@@ -38,6 +40,10 @@ export interface Context {
   created?: ObjectId;
   /** What the source was attached to when its ability was activated (it may have been sacrificed since). */
   attachedTo?: ObjectId;
+  /** "That much": the amount the trigger's event was about. */
+  eventAmount?: number;
+  /** In a static effect's amount, the object it's being applied to. */
+  affected?: ObjectId;
 }
 
 const zoneName = (o: GameObject) => (o.zone.includes('.') ? o.zone.split('.')[1]! : o.zone);
@@ -52,6 +58,7 @@ export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx:
   if (f.allTypes && !f.allTypes.every((t) => c.types.includes(t))) return false;
   if (f.token !== undefined && !!s.setup.cards[o.card]?.token !== f.token) return false;
   if (f.subtypes && !f.subtypes.some((t) => c.subtypes.includes(t))) return false;
+  if (f.notSubtypes && f.notSubtypes.some((t) => c.subtypes.includes(t))) return false;
   if (f.supertypes && !f.supertypes.some((t) => c.supertypes.includes(t))) return false;
   if (f.controller === 'you' && o.controller !== ctx.controller) return false;
   if (f.controller === 'opponent' && o.controller === ctx.controller) return false;
@@ -64,7 +71,11 @@ export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx:
   if (f.keyword && !c.keywords.includes(f.keyword)) return false;
   if (f.notKeyword && c.keywords.includes(f.notKeyword)) return false;
   if (f.colors && !f.colors.some((x) => c.colors.includes(x))) return false;
-  if (f.withCounter && !(o.counters[f.withCounter]! > 0)) return false;
+  if (f.withCounter && !(f.withCounter === '*' ? Object.values(o.counters).some((n) => n > 0) : o.counters[f.withCounter]! > 0)) return false;
+  if (f.sharesCreatureTypeWith) {
+    const mine = c.types.includes('Creature') ? c.subtypes : [];
+    if (!select(s, view, f.sharesCreatureTypeWith, ctx).some((x) => view(x).subtypes.some((t) => mine.includes(t)))) return false;
+  }
   if (f.noCounters && Object.values(o.counters).some((n) => n > 0)) return false;
   if (f.anyOf && !f.anyOf.some((g) => matches(s, view, o, { ...g, zone: f.zone ?? 'battlefield' }, ctx))) return false;
   if (f.controlledByTarget !== undefined && !(ctx.targets?.[f.controlledByTarget] ?? []).includes(o.controller)) return false;
@@ -87,6 +98,7 @@ export function objects(s: GameState, view: View, ref: ObjectRef, ctx: Context):
   if (ref === 'self') return s.objects[ctx.source] ? [s.objects[ctx.source]!] : [];
   if (ref === 'triggerObject') return ctx.eventObject && s.objects[ctx.eventObject] ? [s.objects[ctx.eventObject]!] : [];
   if (ref === 'created') return ctx.created && s.objects[ctx.created] ? [s.objects[ctx.created]!] : [];
+  if (ref === 'affected') return ctx.affected && s.objects[ctx.affected] ? [s.objects[ctx.affected]!] : [];
   if (ref === 'attachedTo') {
     const to = ctx.attachedTo ?? s.objects[ctx.source]?.attachedTo;
     return to && s.objects[to] ? [s.objects[to]!] : [];
@@ -105,6 +117,13 @@ export function countersOf(s: GameState, view: View, ref: ObjectRef, ctx: Contex
 export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ctx.x ?? 0): number {
   if (typeof a === 'number') return a;
   if (a === 'x') return x;
+  if (a === 'eventAmount') return ctx.eventAmount ?? 0;
+  if ('playerCounters' in a) return s.players[ctx.controller].counters[a.playerCounters] ?? 0;
+  if ('creatureTypesOf' in a) {
+    // Creature types are the subtypes of a creature (205.3m); the pool has no changelings.
+    const n = objects(s, view, a.creatureTypesOf, ctx).reduce((k, o) => k + (view(o).types.includes('Creature') ? view(o).subtypes.length : 0), 0);
+    return a.max === undefined ? n : Math.min(n, a.max);
+  }
   if ('count' in a) return select(s, view, a.count, ctx).length;
   if ('counters' in a) return countersOf(s, view, a.on, ctx).reduce((n, c) => n + (a.counters === '*' ? Object.values(c).reduce((x, y) => x + y, 0) : c[a.counters] ?? 0), 0);
   if ('powerOf' in a) return objects(s, view, a.powerOf, ctx).reduce((n, o) => n + view(o).power, 0);
@@ -115,6 +134,7 @@ export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ct
 
 export function holds(s: GameState, view: View, c: Condition, ctx: Context): boolean {
   if (c === 'yourTurn') return s.active === ctx.controller;
+  if (c === 'firstTapThisTurn') return !!ctx.eventObject && s.turnLog.tapped[ctx.eventObject] === 1;
   if ('not' in c) return !holds(s, view, c.not, ctx);
   if ('all' in c) return c.all.every((x) => holds(s, view, x, ctx));
   if ('exists' in c) return select(s, view, c.exists, ctx).length > 0;

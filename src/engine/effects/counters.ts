@@ -11,7 +11,7 @@ export interface RemoveAnyCounters { removeAnyCounters: number; on: ObjectRef }
 export interface PutCountersOf { putCountersOf: ObjectRef; on: ObjectRef }
 
 export const addCounters: Handler<AddCounters> = (e, r) => {
-  for (const o of r.objs(e.on)) add(r.s, o.id, e.addCounters, r.n(e.n));
+  for (const o of r.objs(e.on)) add(r.s, o.id, e.addCounters, r.n(e.n), r.ctx.controller);
 };
 
 export const removeCounters: Handler<RemoveCounters> = (e, r) => {
@@ -31,5 +31,5 @@ export const removeAnyCounters: Handler<RemoveAnyCounters> = (e, r) => {
 
 export const putCountersOf: Handler<PutCountersOf> = (e, r) => {
   const all = countersOf(r.s, r.v, e.putCountersOf, r.ctx);
-  for (const o of r.objs(e.on)) for (const c of all) for (const [kind, k] of Object.entries(c)) add(r.s, o.id, kind, k);
+  for (const o of r.objs(e.on)) for (const c of all) for (const [kind, k] of Object.entries(c)) add(r.s, o.id, kind, k, r.ctx.controller);
 };

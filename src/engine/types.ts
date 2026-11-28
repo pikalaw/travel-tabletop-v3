@@ -3,7 +3,7 @@
  * GameState holds the whole game; decisions and choices are plain data, so a game is its setup,
  * its seed and its list of choices.
  */
-import type { CardScript, Continuous, Duration, Effect, TargetSpec } from './abilities';
+import type { CardScript, Continuous, Duration, Effect, TargetSpec, TriggeredAbility } from './abilities';
 import type { RngState } from './rng';
 
 export type PlayerId = 'p1' | 'p2';
@@ -94,6 +94,8 @@ export interface GameObject {
   playableTurn?: number;
   /** The colour chosen as it entered (Thriving lands). */
   chosenColor?: Color;
+  /** For a spell on the stack: counters the permanent enters with (mana with a rider was spent on it). */
+  entersWithCounters?: Record<string, number>;
   /** For a spell on the stack: the modes chosen and the value of X. */
   modes?: number[];
   x?: number;
@@ -111,6 +113,8 @@ export interface StackAbility {
   index: number;
   /** The object the trigger's event was about, if any. */
   eventObject?: ObjectId;
+  /** How much of something the event was about ("that much": the counters put). */
+  eventAmount?: number;
   /** What the source was attached to as the ability was activated (a sacrificed Aura's "enchanted creature"). */
   attachedTo?: ObjectId;
 }
@@ -136,6 +140,7 @@ export interface PendingTrigger {
   card: CardId;
   index: number;
   eventObject?: ObjectId;
+  eventAmount?: number;
   /** Its controller has put it in order among their other triggers. */
   ordered?: boolean;
 }
@@ -155,6 +160,7 @@ export interface Resolving {
   /** The token created last while resolving, for "it". */
   created?: ObjectId;
   attachedTo?: ObjectId;
+  eventAmount?: number;
   /** Cards an effect looked at, kept across its decision. */
   looked?: ObjectId[];
 }
@@ -172,6 +178,8 @@ export interface PlayerState {
   drewFromEmpty: boolean;
   mulligans: number;
   kept: boolean;
+  /** Counters on the player (experience). */
+  counters: Record<string, number>;
 }
 
 export type Decision =
@@ -196,7 +204,9 @@ export type Decision =
    * the answer with and without cards ("Sacrifice", "Don't"). Discards, searches, optional costs
    * and looks at the library all ask this, so a mechanic that chooses cards needs no new prompt.
    */
-  | { kind: 'pick'; player: PlayerId; from: ObjectId[]; options: ObjectId[]; min: number; max: number; orNone?: boolean; text: string; done?: string; none?: string };
+  | { kind: 'pick'; player: PlayerId; from: ObjectId[]; options: ObjectId[]; min: number; max: number; orNone?: boolean; text: string; done?: string; none?: string }
+  /** The general choice among worded options ("Put it onto the battlefield", "Leave it on top"), with any cards it's about, shown to the chooser. */
+  | { kind: 'choose'; player: PlayerId; text: string; options: string[]; cards?: ObjectId[] };
 
 export type Choice =
   | { kind: 'keep' }
@@ -206,7 +216,8 @@ export type Choice =
   | { kind: 'bottom'; cards: ObjectId[] }
   | { kind: 'pass' }
   | { kind: 'play'; object: ObjectId }
-  | { kind: 'cast'; object: ObjectId; targets?: Target[][]; modes?: number[]; x?: number }
+  /** `cost`: which of the spell's additional-cost options; `sacrificing`: the permanent a sacrifice cost takes. */
+  | { kind: 'cast'; object: ObjectId; targets?: Target[][]; modes?: number[]; x?: number; cost?: number; sacrificing?: ObjectId[] }
   /** `tapping`: the creatures tapped for a "tap an untapped creature you control" cost. */
   | { kind: 'activate'; object: ObjectId; ability: number; targets?: Target[][]; tapping?: ObjectId[] }
   | { kind: 'order'; triggers: number[] }
@@ -215,6 +226,7 @@ export type Choice =
   /** Scry or surveil: the cards kept on top, top first, and the ones moved away. */
   | { kind: 'arrange'; top: ObjectId[]; away: ObjectId[] }
   | { kind: 'pick'; cards: ObjectId[] }
+  | { kind: 'option'; index: number }
   | { kind: 'yes' }
   | { kind: 'no' }
   | { kind: 'attack'; attackers: ObjectId[] }
@@ -222,6 +234,21 @@ export type Choice =
   | { kind: 'damage'; assign: Record<ObjectId | 'player', number> }
   | { kind: 'discard'; cards: ObjectId[] }
   | { kind: 'legend'; keep: ObjectId };
+
+/** A delayed or reflexive triggered ability: what it does, whose it is, and what it watches. */
+export interface DelayedTrigger {
+  ability: TriggeredAbility;
+  controller: PlayerId;
+  source: ObjectId;
+  sourceName: string;
+  card: CardId;
+  /** The one object its event must be about ("when that creature dies"). */
+  about?: ObjectId;
+  /** The last turn it can trigger ("this turn"). */
+  untilTurn?: number;
+  /** It triggered (once only), or it was reflexive and put straight into pending triggers. */
+  done?: boolean;
+}
 
 export interface Refusal { refused: string }
 
@@ -267,10 +294,15 @@ export interface GameState {
   activatedThisTurn: Record<string, number>;
   /** Exhaust abilities used, by "objectId:index" (702.177: each only once). */
   exhausted: Record<string, true>;
+  /**
+   * Delayed and reflexive triggered abilities (603.7, 603.12), created by effects; a pending trigger
+   * names one as index DELAYED + its position here. Entries stay (marked done) so indices hold.
+   */
+  delayed: DelayedTrigger[];
   /** Counters on permanents that left the battlefield this turn, for "its counters" (608.2h). */
   lastKnown: Record<ObjectId, { counters: Record<string, number> }>;
   /** What happened this turn, for "this turn" conditions and "second card" triggers. */
-  turnLog: { attacked: Record<PlayerId, boolean>; lifeLost: Record<PlayerId, number>; drawn: Record<PlayerId, number> };
+  turnLog: { attacked: Record<PlayerId, boolean>; lifeLost: Record<PlayerId, number>; drawn: Record<PlayerId, number>; tapped: Record<ObjectId, number> };
   result: GameResult | null;
   /** Public events, oldest first. */
   events: GameEvent[];

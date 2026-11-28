@@ -5,7 +5,7 @@
  * auto-payment will tap. The engine has the last word: a refused answer goes back to the player.
  */
 import type { TargetSpec } from '../engine/abilities';
-import { spellAbility, tapCandidates } from '../engine/engine';
+import { sacrificeCandidates, spellAbility, tapCandidates, whyNotCast } from '../engine/engine';
 import { legalTargets } from '../engine/targets';
 import type { Choice, GameState, ObjectId, PlayerId, Target } from '../engine/types';
 
@@ -16,6 +16,9 @@ export interface Intent {
   /** For an activation: which ability. */
   ability?: number;
   modes?: number[];
+  /** Which additional-cost option ("pay {4} or sacrifice …"), and what it sacrifices. */
+  cost?: number;
+  sacrificing?: ObjectId[];
   x?: number;
   targets: Target[][];
   tapping?: ObjectId[];
@@ -23,6 +26,8 @@ export interface Intent {
 
 export type Need =
   | { kind: 'modes'; options: { text: string; ok: boolean }[]; min: number; max: number }
+  | { kind: 'cost'; options: { text: string; ok: boolean }[] }
+  | { kind: 'sacrifice'; options: ObjectId[] }
   | { kind: 'x' }
   | { kind: 'target'; spec: number; legal: Target[]; count: number; upTo: boolean; text: string }
   | { kind: 'tap'; options: ObjectId[] }
@@ -56,6 +61,10 @@ export function nextNeed(s: GameState, p: PlayerId, i: Intent): Need {
         options: spell.modes.options.map((m) => ({ text: m.text, ok: (m.targets ?? []).every((t) => legalTargets(s, t, ctx).length > 0) })),
       };
     }
+    // 601.2b: additional costs are announced with the modes, before targets.
+    if (spell?.costOptions && i.cost === undefined) {
+      return { kind: 'cost', options: spell.costOptions.map((o, k) => ({ text: o.text, ok: !whyNotCast(s, p, i.object, undefined, undefined, i.x ?? 0, k) })) };
+    }
     if (i.x === undefined && s.setup.cards[s.objects[i.object]!.card]!.manaCost.some((m) => m.kind === 'x')) return { kind: 'x' };
   }
   const specs = specsOf(s, i);
@@ -65,6 +74,8 @@ export function nextNeed(s: GameState, p: PlayerId, i: Intent): Need {
     const count = 'objects' in spec ? spec.count ?? 1 : 1;
     return { kind: 'target', spec: k, legal: legalTargets(s, spec, ctx), count, upTo: 'objects' in spec && !!spec.upTo, text: describeSpec(spec) };
   }
+  const sacrifice = i.kind === 'cast' && i.cost !== undefined ? scriptOf(s, i.object)?.spell?.costOptions?.[i.cost]?.cost.sacrifice : undefined;
+  if (sacrifice && !i.sacrificing) return { kind: 'sacrifice', options: sacrificeCandidates(s, p, sacrifice, i.object) };
   if (i.kind === 'activate' && !i.tapping) {
     const a = scriptOf(s, i.object)?.activated?.[i.ability ?? 0];
     if (a?.cost.tapAnother) return { kind: 'tap', options: tapCandidates(s, p, a) };
@@ -73,7 +84,7 @@ export function nextNeed(s: GameState, p: PlayerId, i: Intent): Need {
 }
 
 export function toChoice(i: Intent): Choice {
-  if (i.kind === 'cast') return { kind: 'cast', object: i.object, targets: i.targets, ...(i.modes ? { modes: i.modes } : {}), ...(i.x !== undefined ? { x: i.x } : {}) };
+  if (i.kind === 'cast') return { kind: 'cast', object: i.object, targets: i.targets, ...(i.modes ? { modes: i.modes } : {}), ...(i.x !== undefined ? { x: i.x } : {}), ...(i.cost !== undefined ? { cost: i.cost } : {}), ...(i.sacrificing ? { sacrificing: i.sacrificing } : {}) };
   return { kind: 'activate', object: i.object, ability: i.ability ?? 0, targets: i.targets, ...(i.tapping ? { tapping: i.tapping } : {}) };
 }
 

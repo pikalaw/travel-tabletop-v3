@@ -9,6 +9,6 @@ export const earthbend: Handler<Earthbend> = (e, r) => {
   for (const o of r.objs(e.on)) {
     r.addEffect({ addTypes: ['Creature'], setBase: [0, 0], addKeywords: ['haste'], earthbent: true }, [o.id], 'permanent');
     r.log(`${r.v(o).name} is earthbent`);
-    addCounters(r.s, o.id, '+1/+1', r.n(e.earthbend));
+    addCounters(r.s, o.id, '+1/+1', r.n(e.earthbend), r.ctx.controller);
   }
 };

@@ -52,6 +52,8 @@ async function playRandomly(page: Page, seed: number, steps: number) {
     if (await vis('x-done')) { await page.getByTestId('x-done').click(); continue; }
     if (await any('.prompt .pipbtn')) continue;
     if (await any('[data-testid^=mode-]:enabled')) continue;
+    if (await any('[data-testid^=cost-]:enabled')) continue;
+    if (await any('[data-testid^=option-]')) continue;
     if (await any('.prompt .chipbtn')) continue;
     if (await vis('yes')) {
       if ((await enabled('yes')) && rnd(2)) await page.getByTestId('yes').click();
@@ -136,13 +138,14 @@ test('a player resigns from the menu, and the other wins', async ({ page }) => {
   await expect(page.locator('.foot')).toContainText('Lawrence resigns');
 });
 
-for (const seed of [11, 12]) {
+const BEGINNER_BOX = ['bb-firebending', 'bb-attacking', 'bb-zuko-tutorial', 'bb-waterbending', 'bb-allies', 'bb-spells', 'bb-earthbending', 'bb-counters', 'bb-big-creatures', 'bb-aang-tutorial'];
+const JUMPSTART = ['js-reinforced-1', 'js-earthbending-1', 'js-toph', 'js-at-the-zoo', 'js-earth-kingdom-1', 'js-reinforced-2', 'js-earth-kingdom-2'];
+for (const [seed, packets] of [[11, BEGINNER_BOX], [12, BEGINNER_BOX], [13, JUMPSTART]] as const) {
   test(`random play through the screen never shows a hand to the wrong player (seed ${seed})`, async ({ page }) => {
     test.setTimeout(240_000);
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    const packets = ['bb-firebending', 'bb-attacking', 'bb-zuko-tutorial', 'bb-waterbending', 'bb-allies', 'bb-spells', 'bb-earthbending', 'bb-counters', 'bb-big-creatures', 'bb-aang-tutorial'];
-    const k = seed % 4;
+    const k = seed % 4 % (packets.length - 5);
     await newGame(page, seed, packets.slice(k, k + 3), packets.slice(k + 3, k + 6));
     await playRandomly(page, seed, 250);
     expect(errors).toEqual([]);

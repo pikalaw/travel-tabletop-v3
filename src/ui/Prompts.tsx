@@ -45,7 +45,7 @@ export function asking(s: GameState): string {
     case 'chooseColor': return `choose a colour for ${nameOf(s, d.object)}`;
     case 'arrange': return d.to === 'bottom' ? 'scry' : 'surveil';
     case 'payOrElse': return `pay ${payWords(d)}?`;
-    case 'pick': return d.text.toLowerCase();
+    case 'pick': case 'choose': return d.text.toLowerCase();
   }
 }
 
@@ -163,6 +163,13 @@ export function DecisionPrompt({ s, d, a, send }: { s: GameState; d: Decision; a
         </div>
       );
     }
+    case 'choose': return (
+      <div class="prompt">
+        <p>{d.text}</p>
+        {d.cards && <CardList s={s} ids={d.cards} selectable={new Set()} selected={new Set()} onPick={() => undefined} />}
+        <div class="menu">{d.options.map((o, i) => <button key={i} class={`btn ${i === 0 ? 'primary' : ''}`} onClick={() => send({ kind: 'option', index: i })} data-testid={`option-${i}`}>{o}</button>)}</div>
+      </div>
+    );
     case 'priority': return null;
   }
 }
@@ -203,6 +210,20 @@ export function IntentPrompt(c: Casting) {
         </div>
       );
     }
+    case 'cost': return (
+      <div class="prompt">
+        <p><b>{name}</b>: as an additional cost</p>
+        {need.options.map((o, i) => <button key={i} class="btn opt" disabled={!o.ok} onClick={() => setIntent({ ...intent, cost: i })} data-testid={`cost-${i}`}>{o.text}</button>)}
+        <div class="row">{cancel}</div>
+      </div>
+    );
+    case 'sacrifice': return (
+      <div class="prompt">
+        <p><b>{name}</b>: choose what to sacrifice</p>
+        <div class="chips-row">{need.options.map((id) => <button key={id} class="btn chipbtn" onClick={() => setIntent({ ...intent, sacrificing: [id] })} data-testid={`sacrifice-${nameOf(s, id)}`}>{nameOf(s, id)}</button>)}</div>
+        <div class="row">{cancel}</div>
+      </div>
+    );
     case 'x': return (
       <div class="prompt">
         <p><b>{name}</b>: choose X</p>

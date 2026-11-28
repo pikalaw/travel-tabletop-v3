@@ -10,7 +10,7 @@ import { attackers, canAttack, canBlock, checkAttack, checkBlocks, checkSplit, d
 import { runEffects } from './effects';
 import { holds, matches, type Context } from './evaluate';
 import { parseCost } from './mana';
-import { costToPay, pay, spellPayment } from './payment';
+import { costToPay, pay, riderCounters, sacrificeCandidates, spellPayment } from './payment';
 import { seedRng } from './rng';
 import { stateBasedActions } from './sba';
 import { activatedOf, battlefield, controlledBy, createObject, draw, event, move, obj, shuffleLibrary, spellOf, zoneOf } from './state';
@@ -25,7 +25,7 @@ const STARTING_LIFE = 20;
 const PERMANENT_TYPES = ['Creature', 'Artifact', 'Enchantment', 'Planeswalker', 'Battle'];
 
 const playerName = (s: GameState, p: PlayerId) => s.setup.players[p].name;
-const freshTurnLog = (): GameState['turnLog'] => ({ attacked: { p1: false, p2: false }, lifeLost: { p1: 0, p2: 0 }, drawn: { p1: 0, p2: 0 } });
+const freshTurnLog = (): GameState['turnLog'] => ({ attacked: { p1: false, p2: false }, lifeLost: { p1: 0, p2: 0 }, drawn: { p1: 0, p2: 0 }, tapped: {} });
 const nameOf = (s: GameState, id: ObjectId) => characteristics(s, obj(s, id)).name;
 const ctxFor = (p: PlayerId, source: ObjectId): Context => ({ controller: p, source });
 const hand = (s: GameState, p: PlayerId) => s.zones[zoneOf(p, 'hand')];
@@ -39,10 +39,10 @@ export function start(setup: GameSetup, seed: number): GameState {
   const s: GameState = {
     seq: 0, setup, turn: 0, active: setup.first, step: 'untap', priority: null, passes: 0,
     players: Object.fromEntries(PLAYERS.map((p) => [p, {
-      life: STARTING_LIFE, pool: emptyPool(), combatPool: emptyPool(), landsPlayed: 0, extraLands: 0, drewFromEmpty: false, mulligans: 0, kept: false,
+      life: STARTING_LIFE, pool: emptyPool(), combatPool: emptyPool(), landsPlayed: 0, extraLands: 0, drewFromEmpty: false, mulligans: 0, kept: false, counters: {},
     }])) as GameState['players'],
     objects: {}, zones, nextId: 1, nextTimestamp: 1, rng: seedRng(seed), decision: null, assignments: {},
-    result: null, events: [], pendingTurnBased: false, effects: [], pendingTriggers: [], resolving: null,
+    result: null, events: [], pendingTurnBased: false, effects: [], pendingTriggers: [], resolving: null, delayed: [],
     activatedThisTurn: {}, exhausted: {}, lastKnown: {}, turnLog: freshTurnLog(),
   };
   for (const p of PLAYERS) {
@@ -113,7 +113,11 @@ function checkModes(s: GameState, id: ObjectId, modes?: number[]): string | null
 }
 
 /** Why `p` can't cast this card now, or null. With `targets`, also whether those are legal. */
-export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Target[][], modes?: number[], x = 0): string | null {
+/**
+ * Why `p` can't cast this card now, or null. With `targets`, also whether those are legal; with
+ * `option` and `sacrificing`, whether that additional-cost choice can be paid.
+ */
+export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Target[][], modes?: number[], x = 0, option?: number, sacrificing?: ObjectId[]): string | null {
   const o = s.objects[id];
   const fromExile = !!o && o.zone === zoneOf(p, 'exile') && o.owner === p && (!!o.airbended || playableFromExile(s, p, o));
   if (!o || (o.zone !== zoneOf(p, 'hand') && !fromExile)) return 'Not in your hand';
@@ -122,8 +126,13 @@ export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Ta
   const instantSpeed = isType(s, o, 'Instant') || characteristics(s, o).keywords.includes('flash')
     || (!!spellDef?.flashIf && holds(s, view(s), spellDef.flashIf, ctxFor(p, id)));
   if (!instantSpeed && !sorcerySpeed(s, p)) return 'Only in your main phase with an empty stack';
-  if (!spellPayment(s, p, id, x)) return 'Not enough mana of the right colours';
   const spell = spellOf(s, id);
+  const options = spell?.costOptions;
+  if (options) {
+    if (option !== undefined && !options[option]) return 'No such cost';
+    const why = (i: number) => costOptionProblem(s, p, id, x, i, sacrificing);
+    if (option !== undefined) { const bad = why(option); if (bad) return bad; } else if (options.every((_, i) => why(i))) return why(0);
+  } else if (!spellPayment(s, p, id, x)) return 'Not enough mana of the right colours';
   if (spell?.modes && targets === undefined) {
     // Castable if enough modes could each be chosen with legal targets.
     const ok = spell.modes.options.filter((m) => hasTargets(s, m.targets ?? [], ctxFor(p, id))).length;
@@ -133,6 +142,18 @@ export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Ta
   const { specs } = spellAbility(s, id, modes);
   if (!hasTargets(s, specs, ctxFor(p, id))) return 'No legal target';
   return targets === undefined ? null : checkTargets(s, specs, targets, ctxFor(p, id));
+}
+
+/** Why additional-cost option `i` of this spell can't be paid now (with this sacrifice, if chosen), or null. */
+function costOptionProblem(s: GameState, p: PlayerId, id: ObjectId, x: number, i: number, sacrificing?: ObjectId[]): string | null {
+  const c = spellOf(s, id)!.costOptions![i]!.cost;
+  if (!spellPayment(s, p, id, x, i)) return 'Not enough mana of the right colours';
+  if (c.sacrifice) {
+    const can = sacrificeCandidates(s, p, c.sacrifice, id);
+    if (!can.length) return 'Nothing to sacrifice';
+    if (sacrificing && (sacrificing.length !== 1 || !can.includes(sacrificing[0]!))) return 'Choose a permanent to sacrifice';
+  }
+  return null;
 }
 
 /** Creatures that could be tapped for a "tap an untapped creature you control" cost. */
@@ -181,6 +202,7 @@ export function legalActions(s: GameState): Choice[] {
     case 'mulligan': return [{ kind: 'keep' }, { kind: 'mulligan' }];
     case 'legend': return d.objects.map((keep) => ({ kind: 'legend', keep }));
     case 'may': case 'payOrElse': return [{ kind: 'yes' }, { kind: 'no' }];
+    case 'choose': return d.options.map((_, index) => ({ kind: 'option', index }));
     case 'priority': {
       const p = d.player;
       const out: Choice[] = [{ kind: 'pass' }];
@@ -364,6 +386,12 @@ function apply(s: GameState, d: Decision, c: Choice): string | null {
       continueResolving(s, c);
       return null;
     }
+    case 'choose': {
+      if (c.kind !== 'option') return wrong(d, c);
+      if (!Number.isInteger(c.index) || !d.options[c.index]) return 'Choose one of the options';
+      continueResolving(s, c);
+      return null;
+    }
     case 'pick': {
       if (c.kind !== 'pick') return wrong(d, c);
       const none = d.orNone && c.cards.length === 0;
@@ -418,14 +446,23 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       const specs = s.objects[c.object] ? spellAbility(s, c.object, c.modes).specs : [];
       const x = c.x ?? 0;
       if (!Number.isInteger(x) || x < 0) return 'X must be a whole number';
-      const bad = whyNotCast(s, p, c.object, c.targets ?? [], c.modes, x);
+      const options = spellOf(s, c.object)?.costOptions;
+      if (options && c.cost === undefined) return 'Choose how to pay the additional cost';
+      const sacrifice = options?.[c.cost ?? 0]?.cost.sacrifice;
+      if (sacrifice && !c.sacrificing) return 'Choose a permanent to sacrifice';
+      const bad = whyNotCast(s, p, c.object, c.targets ?? [], c.modes, x, c.cost, c.sacrificing);
       if (bad) return specs.length && !c.targets ? 'Choose targets' : bad;
-      pay(s, p, spellPayment(s, p, c.object, x)!.sources);
+      // Targets are chosen before costs are paid (601.2c, 601.2h): a sacrifice may take a target.
       event(s, `${playerName(s, p)} casts ${nameOf(s, c.object)}${c.x !== undefined ? ` with X = ${x}` : ''}${describeTargets(s, c.targets)}`);
+      const sources = spellPayment(s, p, c.object, x, c.cost)!.sources;
+      pay(s, p, sources);
+      if (sacrifice) for (const id of c.sacrificing!) { event(s, `${playerName(s, p)} sacrifices ${nameOf(s, id)}`); leaveBattlefield(s, [id], 'graveyard'); }
       const spell = move(s, c.object, 'stack', { controller: p });
       spell.targets = c.targets ?? [];
       if (c.modes) spell.modes = c.modes;
       if (c.x !== undefined) spell.x = x;
+      const extra = riderCounters(s, sources, spell.id);
+      if (Object.keys(extra).length) spell.entersWithCounters = extra;
       s.passes = 0;
       fire(s, { kind: 'cast', object: spell.id, player: p }); // 601.2i
       return null;
@@ -488,7 +525,7 @@ function activate(s: GameState, p: PlayerId, id: ObjectId, index: number, target
 // Triggers onto the stack (603.3b).
 
 const triggerCtx = (t: PendingTrigger): Context =>
-  ({ controller: t.controller, source: t.source, ...(t.eventObject ? { eventObject: t.eventObject } : {}) });
+  ({ controller: t.controller, source: t.source, ...(t.eventObject ? { eventObject: t.eventObject } : {}), ...(t.eventAmount !== undefined ? { eventAmount: t.eventAmount } : {}) });
 
 /** Puts pending triggers on the stack, active player's first, asking orders and targets where they're real choices. */
 function stackTriggers(s: GameState): void {
@@ -517,7 +554,7 @@ function stackTriggers(s: GameState): void {
 function stackTrigger(s: GameState, i: number, targets: Target[][]): void {
   const t = s.pendingTriggers.splice(i, 1)[0]!;
   const ab = createObject(s, t.card, t.controller, 'stack');
-  ab.ability = { source: t.source, sourceName: t.sourceName, kind: 'triggered', index: t.index, ...(t.eventObject ? { eventObject: t.eventObject } : {}) };
+  ab.ability = { source: t.source, sourceName: t.sourceName, kind: 'triggered', index: t.index, ...(t.eventObject ? { eventObject: t.eventObject } : {}), ...(t.eventAmount !== undefined ? { eventAmount: t.eventAmount } : {}) };
   ab.targets = targets;
   event(s, `${t.sourceName}'s ability triggers${describeTargets(s, targets)}`);
 }
@@ -532,7 +569,7 @@ function resolveTop(s: GameState): void {
   let effects: Effect[];
   let specs: TargetSpec[];
   const source = a ? a.source : id;
-  const ctx: Context = { controller: o.controller, source, ...(a?.eventObject ? { eventObject: a.eventObject } : {}) };
+  const ctx: Context = { controller: o.controller, source, ...(a?.eventObject ? { eventObject: a.eventObject } : {}), ...(a?.eventAmount !== undefined ? { eventAmount: a.eventAmount } : {}) };
   const label = a ? `${a.sourceName}'s ability` : nameOf(s, id);
   if (a) {
     const def = a.kind === 'activated' ? s.setup.cards[o.card]!.script!.activated![a.index]! : triggeredAbility(s, o.card, a.index);
@@ -559,11 +596,11 @@ function resolveTop(s: GameState): void {
   event(s, `${label} resolves`);
   if (!a && PERMANENT_TYPES.some((t) => isType(s, o, t))) {
     const attachTo = spellOf(s, id)?.enchant ? legal[0]?.[0] : undefined;
-    putOntoBattlefield(s, id, o.controller, attachTo ? { attachTo } : {});
+    putOntoBattlefield(s, id, o.controller, { ...(attachTo ? { attachTo } : {}), ...(o.entersWithCounters ? { counters: o.entersWithCounters } : {}) });
     s.priority = s.active;
     return;
   }
-  s.resolving = { object: id, effects: [...effects], pc: 0, controller: o.controller, source, targets: legal, specs, ...(ctx.eventObject ? { eventObject: ctx.eventObject } : {}), ...(o.x !== undefined ? { x: o.x } : {}), ...(a?.attachedTo ? { attachedTo: a.attachedTo } : {}) };
+  s.resolving = { object: id, effects: [...effects], pc: 0, controller: o.controller, source, targets: legal, specs, ...(ctx.eventObject ? { eventObject: ctx.eventObject } : {}), ...(ctx.eventAmount !== undefined ? { eventAmount: ctx.eventAmount } : {}), ...(o.x !== undefined ? { x: o.x } : {}), ...(a?.attachedTo ? { attachedTo: a.attachedTo } : {}) };
   continueResolving(s);
 }
 
@@ -708,4 +745,4 @@ function skip(s: GameState): void {
   s.priority = null;
 }
 
-export { manaSources, paymentPreview, tapForMana } from './payment';
+export { manaSources, paymentPreview, sacrificeCandidates, tapForMana } from './payment';
