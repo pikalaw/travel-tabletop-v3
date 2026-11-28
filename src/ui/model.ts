@@ -249,6 +249,8 @@ export interface Beat {
   title: string;
   /** The source's picture (absent for combat damage), its controller, and the text that did it. */
   image?: string;
+  /** The spell or ability that resolved, as it was on the stack in the state before (states[at - 1]). */
+  object?: ObjectId;
   controller?: PlayerId;
   text?: string;
   /** What else happened in that step, as the log says it ("Sokka dies"). */
@@ -323,7 +325,7 @@ export function beats(states: readonly GameState[], from: number, to: number): B
       const permanent = !ab && ['Creature', 'Artifact', 'Enchantment', 'Land', 'Planeswalker', 'Battle'].some((t) => characteristics(a, o).types.includes(t));
       const text = ab ? (ab.kind === 'activated' ? script?.activated?.[ab.index]?.text : triggeredAbility(a, o.card, ab.index).text) : permanent ? '' : a.setup.cards[o.card]!.text;
       out.push({
-        at: i, title: ab ? `${ab.sourceName}'s ability` : nameOf(a, top), image: imageOf(a, top), controller: o.controller,
+        at: i, title: ab ? `${ab.sourceName}'s ability` : nameOf(a, top), image: imageOf(a, top), object: top, controller: o.controller,
         text: resolved.includes(' does nothing: ') ? 'Its target is gone: it does nothing.' : text ?? '', lines, pulses: changes(a, b),
       });
     } else out.push({ at: i, title: 'Combat damage', lines, pulses: changes(a, b) });

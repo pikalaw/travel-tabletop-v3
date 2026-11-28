@@ -195,3 +195,22 @@ test('a cast paid with lands goes straight on the stack, and Undo on the hand-of
   await expect(page.getByTestId('handoff')).toHaveCount(0);
   await expect(page.locator('.hand .card')).toHaveCount(hand);
 });
+
+test('a new turn announces itself, and the log opens each turn with a banner', async ({ page }) => {
+  await newGame(page, 7, ['bb-firebending', 'bb-attacking', 'bb-zuko-tutorial'], ['bb-waterbending', 'bb-allies', 'bb-spells']);
+  await page.getByTestId('look').click(); await page.getByTestId('keep').click();
+  await page.getByTestId('look').click(); await page.getByTestId('keep').click();
+  // Lawrence passes his turn; Claire passes his end step from the hand-off bar: turn 2 is hers.
+  await expect(page.getByTestId('turn-flash')).toContainText('Turn 1'); // the first turn, after the mulligans
+  const turn2 = page.getByTestId('turn-flash').filter({ hasText: 'Turn 2' });
+  for (let i = 0; i < 6 && !(await turn2.isVisible()); i++) {
+    if (await page.getByTestId('bar-pass').isVisible()) await page.getByTestId('bar-pass').click();
+    else if (await page.getByTestId('look').isVisible()) await page.getByTestId('look').click();
+    else await page.getByTestId('pass').click();
+  }
+  await expect(page.getByTestId('turn-flash')).toContainText('Turn 2');
+  await expect(page.getByTestId('turn-flash')).toContainText('Claire');
+  await expect(page.getByTestId('turn-flash')).toHaveCount(0, { timeout: 4000 }); // it fades by itself
+  await page.getByTestId('log-button').click();
+  await expect(page.locator('.log .turn-head')).toContainText(['Mulligans', 'Turn 2 · Claire']); // turn 1 had no events: Lawrence played first and did nothing
+});

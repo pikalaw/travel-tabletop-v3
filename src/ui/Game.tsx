@@ -65,15 +65,22 @@ function LogPanel({ s, since }: { s: GameState; since: number | null }) {
   return (
     <div class="log-panel" data-testid="log" ref={panel}>
       <ol class="log">
-        {events.map((e, i) => (
-          <li key={offset + i} class={since !== null && offset + i >= since ? 'new' : ''}>
-            <span class="dim">T{e.turn}</span> {e.text}
-          </li>
-        ))}
+        {events.map((e, i) => {
+          // A banner in the turn player's colour opens each turn, as in v2.
+          const head = i === 0 || events[i - 1]!.turn !== e.turn;
+          const who = turnPlayer(s, e.turn);
+          return [
+            head && <li key={`t${e.turn}`} class={`turn-head ${who ?? ''}`}>{who ? `Turn ${e.turn} · ${playerName(s, who)}` : 'Mulligans'}</li>,
+            <li key={offset + i} class={since !== null && offset + i >= since ? 'new' : ''}>{e.text}</li>,
+          ];
+        })}
       </ol>
     </div>
   );
 }
+
+/** Whose turn a turn number is (turns alternate from the first player); none for the mulligans. */
+const turnPlayer = (s: GameState, turn: number): PlayerId | null => (turn < 1 ? null : turn % 2 === 1 ? s.setup.first : other(s.setup.first));
 
 /** The undo icon: an arrow curving back. */
 const UndoIcon = () => (
@@ -85,11 +92,14 @@ const UndoIcon = () => (
 /** Words for a decision Undo would take back: "Undo Claire's block". */
 const UNDO_WORDS: Partial<Record<Choice['kind'], string>> = { cast: 'cast', play: 'land', activate: 'ability', attack: 'attack', block: 'block', pass: 'pass', keep: 'keep', mulligan: 'mulligan', targets: 'targets', order: 'order', discard: 'discard' };
 
+/** How long the new-turn banner shows. */
+const TURN_FLASH_MS = 1800;
+
 /** How long each step shows when playback runs by itself (»). */
 const BEAT_MS = 1500;
 
 /** Playback controls: › the next step, » the rest by itself, ✕ stop. */
-interface Controls { next: () => void; auto: () => void; end: () => void; auto_: boolean; last: boolean }
+interface Controls { next: () => void; auto: () => void; end: () => void; auto_: boolean; last: boolean; view: (id: ObjectId, at: number) => void }
 
 function BeatBanner({ s, beat, n, of, c }: { s: GameState; beat: Beat; n: number; of: number; c: Controls }) {
   return (
@@ -99,7 +109,7 @@ function BeatBanner({ s, beat, n, of, c }: { s: GameState; beat: Beat; n: number
         {!c.last && !c.auto_ && <button class="btn" onClick={c.auto} aria-label="Play the rest" data-tip="Play the rest, a step every second and a half." data-testid="beat-auto">»</button>}
         <button class="btn" onClick={c.end} aria-label="Done" data-tip="Stop the playback and show the board as it is now. Your next move stops it too." data-testid="beat-end">✕</button>
       </span>
-      {beat.image ? <img src={beat.image} alt="" /> : <span class="beat-icon">⚔</span>}
+      {beat.image ? <img src={beat.image} alt="" data-card={beat.object} data-card-at={beat.at - 1} onClick={() => beat.object && c.view(beat.object, beat.at - 1)} data-testid="beat-card" /> : <span class="beat-icon">⚔</span>}
       <span class="beat-text">
         <b class={beat.controller ? `by ${beat.controller}` : ''}>{beat.title}</b>
         {beat.controller && <span class="dim"> · {playerName(s, beat.controller)}</span>}
@@ -127,6 +137,11 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const [intent, setIntent] = useState<Intent | null>(null);
   const [picking, setPicking] = useState<Target[]>([]);
   const [viewing, setViewing] = useState<ObjectId | null>(null);
+  /** When the full view shows a card as it was in an earlier state (a step being played back): that state's index. */
+  const [viewAt, setViewAt] = useState<number | null>(null);
+  // While a step is played back, the board shows that step's state: a card opened then is shown as it was.
+  const playedAt = useRef<number | null>(null);
+  const view = (id: ObjectId, at: number | null = null) => { setViewAt(at ?? playedAt.current); setViewing(id); };
   const [pile, setPile] = useState<{ p: PlayerId; pile: 'graveyard' | 'exile' } | null>(null);
   const [menu, setMenu] = useState<'menu' | 'undo' | 'ahead' | 'resign' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -148,7 +163,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   // of combat damage is shown in turn, about a second each, with what it changed pulsing. A tap skips.
   // A long press on any card opens its full view (longpress.ts).
   const root = useRef<HTMLDivElement>(null);
-  useEffect(() => (root.current ? installLongPress(root.current, (id) => setViewing(id)) : undefined), []);
+  useEffect(() => (root.current ? installLongPress(root.current, view) : undefined), []);
 
   const states = session.game.states;
   const seen = useRef(states.length);
@@ -166,12 +181,27 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
     const t = setTimeout(() => setPlay((p) => (p && p.k + 1 < p.beats.length ? { ...p, k: p.k + 1 } : null)), BEAT_MS);
     return () => clearTimeout(t);
   }, [play]);
+  // A new turn announces itself: "Turn 6 · Claire" sweeps across the board in her colour.
+  const lastTurn = useRef(s.turn);
+  const [turnFlash, setTurnFlash] = useState<number | null>(null);
+  useEffect(() => {
+    const before = lastTurn.current;
+    lastTurn.current = s.turn;
+    if (s.turn > before && s.turn > 0) {
+      setTurnFlash(s.turn);
+      const t = setTimeout(() => setTurnFlash(null), TURN_FLASH_MS);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [s.turn]);
+
   const beat = play?.beats[play.k];
+  playedAt.current = beat ? beat.at : null;
   const controls: Controls = {
     next: () => setPlay((p) => (p && p.k + 1 < p.beats.length ? { ...p, k: p.k + 1 } : p)),
     auto: () => setPlay((p) => (p && p.k + 1 < p.beats.length ? { ...p, k: p.k + 1, auto: true } : p)),
     end: () => setPlay(null),
-    auto_: !!play?.auto, last: !!play && play.k + 1 >= play.beats.length,
+    auto_: !!play?.auto, last: !!play && play.k + 1 >= play.beats.length, view,
   };
 
   useEffect(() => {
@@ -279,7 +309,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   };
 
   const handlers = {
-    onCard: (id: ObjectId) => { if (marks.selectable.has(id)) onPick(id); else setViewing(id); },
+    onCard: (id: ObjectId) => { if (marks.selectable.has(id)) onPick(id); else view(id); },
     onPlayer: (p: PlayerId) => onPick(p),
     onPile: (p: PlayerId, which: 'graveyard' | 'exile') => setPile({ p, pile: which }),
     onHandChip: () => (off && actor === me ? takeLook() : setFolded((f) => !f)),
@@ -288,7 +318,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       const o = s.objects[id]!;
       if (characteristics(s, o).types.includes('Land')) { send({ kind: 'play', object: id }); return; }
       const acts = legalActions(s);
-      if (!acts.some((c) => c.kind === 'cast' && c.object === id)) { setViewing(id); return; } // the full view says why
+      if (!acts.some((c) => c.kind === 'cast' && c.object === id)) { view(id); return; } // the full view says why
       startIntent({ kind: 'cast', object: id, targets: [] }, at);
     },
   };
@@ -566,13 +596,21 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   return (
     <div class="game" data-facing={bottom} ref={root}>
       <Board s={beat ? states[beat.at]! : s} ahead={session.game.ahead ?? {}} bottom={bottom} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(beat ? { band: <BeatBanner s={s} beat={beat} n={play!.k + 1} of={play!.beats.length} c={controls} /> } : orderBand ? { band: orderBand } : {})} />
+      {turnFlash !== null && turnPlayer(s, turnFlash) && (
+        <div class={`turn-flash ${turnPlayer(s, turnFlash)}`} data-testid="turn-flash" aria-live="polite">
+          <span>Turn {turnFlash}</span><b>{playerName(s, turnPlayer(s, turnFlash)!)}</b>
+        </div>
+      )}
       {prompt}
       {footer}
       {toast && <div class="toast" data-testid="toast" onClick={() => setToast(null)}>{toast}</div>}
-      {viewing && s.objects[viewing] && <CardView s={s} id={viewing} actor={viewActor} siblings={siblings(s, viewing, shown ? me : null)} onAction={(a) => onAction(viewing, a)} onNavigate={setViewing} onClose={() => setViewing(null)} />}
+      {viewing && viewAt !== null && states[viewAt]?.objects[viewing] && (
+        <CardView s={states[viewAt]!} id={viewing} actor={null} siblings={[viewing]} onAction={() => undefined} onNavigate={(id) => view(id, viewAt)} onClose={() => setViewing(null)} />
+      )}
+      {viewing && viewAt === null && s.objects[viewing] && <CardView s={s} id={viewing} actor={viewActor} siblings={siblings(s, viewing, shown ? me : null)} onAction={(a) => onAction(viewing, a)} onNavigate={(id) => view(id)} onClose={() => setViewing(null)} />}
       {pile && (
         <Sheet title={`${playerName(s, pile.p)}'s ${pile.pile}`} onClose={() => setPile(null)}>
-          {pileIds.length ? <CardList s={s} ids={[...pileIds].reverse()} selectable={new Set()} selected={new Set()} onPick={() => undefined} onOpen={(id) => { setPile(null); setViewing(id); }} /> : <p class="dim">Empty.</p>}
+          {pileIds.length ? <CardList s={s} ids={[...pileIds].reverse()} selectable={new Set()} selected={new Set()} onPick={() => undefined} onOpen={(id) => { setPile(null); view(id); }} /> : <p class="dim">Empty.</p>}
         </Sheet>
       )}
       {menu === 'menu' && (

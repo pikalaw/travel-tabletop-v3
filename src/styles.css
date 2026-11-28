@@ -255,3 +255,9 @@ button { font: inherit; color: inherit; }
 .log-panel .log li.new { border-left-color: var(--gold); color: var(--ink); background: rgba(201, 166, 90, .08); }
 .btn.on { box-shadow: 0 0 0 2px var(--gold) inset; }
 .home .note { background: #2a2414; border: 1px solid var(--gold); border-radius: 8px; padding: 8px 10px; }
+.log-panel .log li.turn-head { margin: 8px 0 3px; padding: 3px 8px; border-left: 0; border-radius: 6px; font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: #fff; background: rgba(var(--tint, 120, 120, 120), .55); }
+/* A new turn: a band in the turn player's colour sweeps across the board, then fades. */
+.turn-flash { position: absolute; left: 0; right: 0; top: 38%; z-index: 30; pointer-events: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 14px 0; color: #fff; background: linear-gradient(90deg, transparent, rgba(var(--tint), .92) 15%, rgba(var(--tint), .92) 85%, transparent); box-shadow: 0 0 30px rgba(var(--tint), .6); animation: turn-sweep 1.8s ease-in-out forwards; }
+.turn-flash span { font-size: 13px; text-transform: uppercase; letter-spacing: 2px; opacity: .85; }
+.turn-flash b { font-size: 28px; letter-spacing: .5px; }
+@keyframes turn-sweep { 0% { opacity: 0; transform: translateX(-40%) scaleY(.6); } 18% { opacity: 1; transform: none; } 75% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateX(30%); } }

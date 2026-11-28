@@ -2,7 +2,8 @@
  * Long press on any card opens its full view (as in v2), wherever the card is: in play, attached,
  * a lands chip, the stack, a hand, a pile or a prompt's list. A tap keeps its meaning where it is
  * (pick an attacker, a target), so the long press is the one gesture that always shows the card.
- * Cards mark themselves with `data-card="<object id>"`.
+ * Cards mark themselves with `data-card="<object id>"`; a card shown as it was in an earlier state
+ * (a step being played back) adds `data-card-at="<state index>"`.
  */
 const HOLD_MS = 450;
 const MOVE_PX = 10;
@@ -12,7 +13,7 @@ let long = false;
 /** Whether the press in progress has become a long press (a hand's drag ignores it then). */
 export const pressIsLong = () => long;
 
-export function installLongPress(root: HTMLElement, open: (id: string) => void): () => void {
+export function installLongPress(root: HTMLElement, open: (id: string, at: number | null) => void): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let start: { x: number; y: number } | null = null;
   let swallow = false;
@@ -25,7 +26,8 @@ export function installLongPress(root: HTMLElement, open: (id: string) => void):
     if (!el || (e.pointerType === 'mouse' && e.button !== 0)) { start = null; return; }
     start = { x: e.clientX, y: e.clientY };
     const id = el.dataset.card!;
-    timer = setTimeout(() => { long = true; swallow = true; navigator.vibrate?.(15); open(id); }, HOLD_MS);
+    const at = el.dataset.cardAt === undefined ? null : Number(el.dataset.cardAt);
+    timer = setTimeout(() => { long = true; swallow = true; navigator.vibrate?.(15); open(id, at); }, HOLD_MS);
   };
   const move = (e: PointerEvent) => {
     if (start && !long && Math.hypot(e.clientX - start.x, e.clientY - start.y) > MOVE_PX) { clearTimeout(timer); start = null; }
