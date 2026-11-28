@@ -4,6 +4,7 @@ import type { PlayerId } from '../engine/types';
 import { other } from '../engine/types';
 import type { Session } from '../host/session';
 import { APP_VERSION, BUILD_ID } from '../version';
+import { colorsOf, colorVars } from './colors';
 import { GameScreen } from './Game';
 import { begin, clearSaved, gameInUrl, load, newGameId, save, setGameInUrl, type GameSpec } from './saved';
 import { Setup } from './Setup';
@@ -51,9 +52,9 @@ export function App({ update, offlineReady }: { update: (() => void) | null; off
   if (screen.kind === 'choose') {
     const start = (first: PlayerId) => { const spec = { ...screen.spec, first }; play(spec, begin(spec)); };
     return (
-      <main class="setup flip">
+      <main class="setup flip" style={colorVars(colorsOf(screen.spec.colors))}>
         <h2>Rematch</h2>
-        <p class="dim">{screen.spec.names[screen.chooser]} lost the last game and chooses:</p>
+        <p class="dim"><span class={`who ${screen.chooser}`}>{screen.spec.names[screen.chooser]}</span> lost the last game and chooses:</p>
         <div class="choices">
           <button class="btn primary" onClick={() => start(screen.chooser)}>Play first</button>
           <button class="btn" onClick={() => start(other(screen.chooser))}>Draw first</button>
@@ -65,6 +66,7 @@ export function App({ update, offlineReady }: { update: (() => void) | null; off
     return (
       <GameScreen
         session={screen.session}
+        colors={colorsOf(screen.spec.colors)}
         onChange={(session) => { save(screen.spec, session); setScreen({ ...screen, session }); }}
         onExit={() => { setGameInUrl(null); setSaved(load()); setScreen({ kind: 'home' }); }}
         onRematch={(chooser) => {

@@ -14,6 +14,7 @@ import { canRedo, canUndo, current } from '../host/controller';
 import { acting, choose, handingOff, look, newInHand, redoLast, resignGame, undoLast, visibleHand, type Session } from '../host/session';
 import { Board, type Marks } from './Board';
 import { CardView, type CardAction } from './CardView';
+import { colorVars } from './colors';
 import { nextNeed, toChoice, withDrop, type Intent, type Need } from './flow';
 import { Footer } from './Footer';
 import { LogPanel, turnPlayer } from './LogPanel';
@@ -28,8 +29,8 @@ const EMPTY: Marks = { selectable: new Set(), selected: new Set(), glow: new Set
 /** How long the new-turn banner shows. */
 const TURN_FLASH_MS = 1800;
 
-export function GameScreen({ session, onChange, onExit, onRematch }: {
-  session: Session; onChange: (x: Session) => void; onExit: () => void; onRematch: (chooser: PlayerId) => void;
+export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
+  session: Session; colors: Record<PlayerId, string>; onChange: (x: Session) => void; onExit: () => void; onRematch: (chooser: PlayerId) => void;
 }) {
   const s = current(session.game);
   const d = s.decision;
@@ -282,7 +283,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const pileIds = pile ? s.zones[`${pile.p}.${pile.pile}`] : [];
 
   return (
-    <div class="game" data-facing={bottom} ref={root}>
+    <div class="game" data-facing={bottom} style={colorVars(colors)} ref={root}>
       <Board s={beat ? states[beat.at]! : s} ahead={session.game.ahead ?? {}} bottom={bottom} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(beat ? { band: <BeatBanner s={s} beat={beat} n={play!.k + 1} of={play!.beats.length} c={controls} /> } : orderBand ? { band: orderBand } : {})} />
       {turnFlash !== null && turnPlayer(s, turnFlash) && (
         <div class={`turn-flash ${turnPlayer(s, turnFlash)}`} data-testid="turn-flash" aria-live="polite">

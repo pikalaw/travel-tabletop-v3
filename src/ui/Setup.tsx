@@ -9,6 +9,7 @@ import type { Packet } from '../cards/types';
 import { nextInt, seedRng } from '../engine/rng';
 import type { PlayerId } from '../engine/types';
 import { other } from '../engine/types';
+import { colorsOf, colorVars, hardToTell, PALETTE } from './colors';
 import { lastSetup, newGameId, rememberSetup, type GameSpec } from './saved';
 
 const COLOR_ORDER = ['W', 'U', 'B', 'R', 'G'];
@@ -20,11 +21,12 @@ export function packetColors(p: Packet): string[] {
 
 const Pips = ({ colors }: { colors: string[] }) => <span class="pips">{colors.map((c) => <span key={c} class={`pip ${c}`} />)}</span>;
 
-function Picker({ who, name, picked, onName, onToggle }: {
-  who: PlayerId; name: string; picked: string[];
-  onName: (n: string) => void; onToggle: (id: string) => void;
+function Picker({ who, name, picked, colors, otherName, onName, onToggle, onColor }: {
+  who: PlayerId; name: string; picked: string[]; colors: Record<PlayerId, string>; otherName: string;
+  onName: (n: string) => void; onToggle: (id: string) => void; onColor: (id: string) => void;
 }) {
-  const colors = [...new Set(picked.flatMap((id) => packetColors(pool.packets.find((p) => p.id === id)!)))];
+  const theirs = colors[other(who)];
+  const deckColors = [...new Set(picked.flatMap((id) => packetColors(pool.packets.find((p) => p.id === id)!)))];
   const groups: [string, Packet[]][] = [
     ['Beginner Box', pool.packets.filter((p) => p.product === 'Beginner Box')],
     ['Jumpstart', pool.packets.filter((p) => p.product === 'Jumpstart')],
@@ -35,7 +37,17 @@ function Picker({ who, name, picked, onName, onToggle }: {
         <span>Player {who === 'p1' ? 1 : 2}</span>
         <input value={name} maxLength={16} onInput={(e) => onName((e.target as HTMLInputElement).value)} data-testid={`name-${who}`} />
       </label>
-      <p class="deck-line">Deck: {picked.length} of 3 packets · {picked.length * 20} cards <Pips colors={COLOR_ORDER.filter((c) => colors.includes(c))} /></p>
+      <div class="swatches" role="radiogroup" aria-label="Colour">
+        {PALETTE.map((c) => (
+          <button key={c.id} role="radio" aria-checked={colors[who] === c.id} aria-label={c.id === theirs ? `${c.name}: ${otherName}'s` : c.name}
+            class={`swatch ${colors[who] === c.id ? 'on' : ''}`} style={{ '--c': c.role }} disabled={c.id === theirs}
+            onClick={() => onColor(c.id)} data-tip={c.id === theirs ? `${otherName} has ${c.name.toLowerCase()}` : `Play as ${c.name.toLowerCase()}`} data-testid={`color-${who}-${c.id}`}>
+            {c.id === theirs ? (otherName.trim()[0] ?? '').toUpperCase() : ''}
+          </button>
+        ))}
+      </div>
+      {hardToTell(colors.p1, colors.p2) && <p class="color-note" data-testid="color-note">Red and green look alike to some colour-blind players.</p>}
+      <p class="deck-line">Deck: {picked.length} of 3 packets · {picked.length * 20} cards <Pips colors={COLOR_ORDER.filter((c) => deckColors.includes(c))} /></p>
       {groups.map(([title, packets]) => (
         <div key={title}>
           <h3>{title}</h3>
@@ -66,6 +78,7 @@ export function Setup({ onStart, onBack }: { onStart: (spec: GameSpec) => void; 
     const keep = (ids?: string[]) => (ids ?? []).filter((id) => { const p = pool.packets.find((x) => x.id === id); return p && packetPlayable(p); });
     return { p1: keep(last.packets?.p1), p2: keep(last.packets?.p2) };
   });
+  const [colors, setColors] = useState<Record<PlayerId, string>>(() => colorsOf(last.colors));
   const [who, setWho] = useState<PlayerId>('p1');
   const [flip, setFlip] = useState<{ seed: number; winner: PlayerId } | null>(null);
 
@@ -77,15 +90,15 @@ export function Setup({ onStart, onBack }: { onStart: (spec: GameSpec) => void; 
     const fixed = Number(new URLSearchParams(location.search).get('seed'));
     const seed = Number.isInteger(fixed) && fixed > 0 ? fixed : crypto.getRandomValues(new Uint32Array(1))[0]! >>> 1;
     const [n] = nextInt(seedRng(seed), 2);
-    rememberSetup({ names, packets });
+    rememberSetup({ names, packets, colors });
     setFlip({ seed, winner: n === 0 ? 'p1' : 'p2' });
   };
 
   if (flip) {
-    const start = (first: PlayerId) => onStart({ id: newGameId(), names, packets, first, seed: flip.seed });
+    const start = (first: PlayerId) => onStart({ id: newGameId(), names, packets, colors, first, seed: flip.seed });
     return (
-      <main class="setup flip">
-        <h2>{names[flip.winner]} wins the coin flip</h2>
+      <main class="setup flip" style={colorVars(colors)}>
+        <h2><span class={`who ${flip.winner}`}>{names[flip.winner]}</span> wins the coin flip</h2>
         <p class="dim">{names[flip.winner]} chooses:</p>
         <div class="choices">
           <button class="btn primary" onClick={() => start(flip.winner)} data-testid="play-first">Play first</button>
@@ -97,18 +110,19 @@ export function Setup({ onStart, onBack }: { onStart: (spec: GameSpec) => void; 
   }
 
   return (
-    <main class="setup">
+    <main class="setup" style={colorVars(colors)}>
       <header class="setup-head">
         <button class="btn" onClick={onBack}>Back</button>
         <div class="tabs">
           {(['p1', 'p2'] as const).map((p) => (
             <button key={p} class={`tab ${who === p ? 'on' : ''} ${p}`} onClick={() => setWho(p)} data-testid={`tab-${p}`}>
-              {names[p] || (p === 'p1' ? 'Player 1' : 'Player 2')} · {packets[p].length}/3
+              <span class="who">{names[p] || (p === 'p1' ? 'Player 1' : 'Player 2')}</span> · {packets[p].length}/3
             </button>
           ))}
         </div>
       </header>
-      <Picker who={who} name={names[who]} picked={packets[who]} onName={(n) => setNames((x) => ({ ...x, [who]: n }))} onToggle={(id) => toggle(who, id)} />
+      <Picker who={who} name={names[who]} picked={packets[who]} colors={colors} otherName={names[other(who)] || (who === 'p1' ? 'Player 2' : 'Player 1')}
+        onName={(n) => setNames((x) => ({ ...x, [who]: n }))} onToggle={(id) => toggle(who, id)} onColor={(id) => setColors((x) => ({ ...x, [who]: id }))} />
       <footer class="setup-foot">
         <button class="btn primary" disabled={!ready} onClick={flipCoin} data-testid="start">Start: flip a coin</button>
       </footer>

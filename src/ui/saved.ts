@@ -15,6 +15,8 @@ export interface GameSpec {
   packets: Record<PlayerId, string[]>;
   first: PlayerId;
   seed: number;
+  /** Each player's colour, by palette id (colors.ts); games saved before colours were picked have none. */
+  colors?: Record<PlayerId, string>;
 }
 
 interface Saved { build: string; spec: GameSpec; choices: LoggedChoice[]; ahead?: Game['ahead']; seen?: Session['seen']; facing: PlayerId; revealed: boolean }
@@ -56,13 +58,13 @@ export function clearSaved(): void {
   try { localStorage.removeItem(KEY); } catch { /* nothing to clear */ }
 }
 
-/** The last names and packets picked, to pre-fill the next setup. */
-export function lastSetup(): Partial<Pick<GameSpec, 'names' | 'packets'>> {
+/** The last names, packets and colours picked, to pre-fill the next setup. */
+export function lastSetup(): Partial<Pick<GameSpec, 'names' | 'packets' | 'colors'>> {
   try { return JSON.parse(localStorage.getItem(SETUP_KEY) ?? '{}') as Partial<GameSpec>; } catch { return {}; }
 }
 
-export function rememberSetup(spec: Pick<GameSpec, 'names' | 'packets'>): void {
-  try { localStorage.setItem(SETUP_KEY, JSON.stringify({ names: spec.names, packets: spec.packets })); } catch { /* not remembered */ }
+export function rememberSetup(spec: Pick<GameSpec, 'names' | 'packets' | 'colors'>): void {
+  try { localStorage.setItem(SETUP_KEY, JSON.stringify({ names: spec.names, packets: spec.packets, colors: spec.colors })); } catch { /* not remembered */ }
 }
 
 /** A fresh game id, short enough for the address bar. */

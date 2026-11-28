@@ -3,8 +3,11 @@
   --ink: #eef2ee;
   --ink-2: #a7b5ae;
   --ink-3: #6f7f78;
-  --hot: #ff7b5f;     /* the player holding the device */
-  --cool: #7aa7ff;    /* the other player */
+  /* Player colours, by default; a game sets its players' picks (src/ui/colors.ts). */
+  --p1-role: #ff7b5f;
+  --p1-tint: 214, 64, 52;
+  --p2-role: #7aa7ff;
+  --p2-tint: 60, 110, 220;
   --gold: #c9a65a;
   --line: rgba(255, 255, 255, .10);
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -35,6 +38,12 @@ button { font: inherit; color: inherit; }
 .tabs { display: flex; gap: 6px; flex: 1; }
 .tab { flex: 1; border-radius: 10px; padding: 8px; border: 1px solid var(--line); background: rgba(0, 0, 0, .3); color: var(--ink-2); font-weight: 700; }
 .tab.on { color: var(--ink); border-color: var(--gold); }
+.tab .who { color: var(--role); }
+.swatches { display: flex; gap: 10px; align-items: center; margin: 8px 0 2px; flex-wrap: wrap; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; border: 2px solid transparent; background: var(--c); color: #fff; font-weight: 800; font-size: 13px; padding: 0; }
+.swatch.on { border-color: #fff; box-shadow: 0 0 0 2px var(--c); }
+.swatch:disabled { opacity: .35; }
+.color-note { font-size: 12px; color: var(--ink-2); margin: 4px 0 0; }
 .picker { flex: 1; overflow-y: auto; padding: 0 12px 12px; }
 .picker h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-3); margin: 14px 0 6px; }
 .name-field { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
@@ -67,8 +76,8 @@ button { font: inherit; color: inherit; }
 
 /* Player colours, for the whole game: Player 1 red, Player 2 blue. Everything a player owns or does
    carries theirs: their half of the board, name, rings, arrows, and the footer when they must act. */
-.p1 { --role: var(--hot); --tint: 214, 64, 52; }
-.p2 { --role: var(--cool); --tint: 60, 110, 220; }
+.p1 { --role: var(--p1-role); --tint: var(--p1-tint); }
+.p2 { --role: var(--p2-role); --tint: var(--p2-tint); }
 .name, .turn, .emptyturn, .by, .who { color: var(--role, var(--ink)); font-weight: 700; }
 
 .stats { display: flex; align-items: center; gap: 8px; padding: 4px 8px; height: 32px; white-space: nowrap; flex: none; position: relative; }
@@ -144,7 +153,7 @@ button { font: inherit; color: inherit; }
 .ordering { display: flex; flex-direction: column; height: 100%; gap: 4px; }
 
 /* hand */
-.hand { height: 128px; display: flex; align-items: center; padding: 6px 10px; background: rgba(var(--tint, 214, 64, 52), .28); flex: none; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
+.hand { height: 128px; display: flex; align-items: center; padding: 6px 10px; background: rgba(var(--tint, var(--p1-tint)), .28); flex: none; overflow-x: auto; touch-action: pan-x; scrollbar-width: none; }
 .hand.folded { height: 10px; padding: 0; }
 .hand { justify-content: safe center; }
 .hand .card { height: 112px; touch-action: pan-x; }

@@ -216,3 +216,31 @@ test('a new turn announces itself, and the log opens each turn with a banner', a
   await page.getByTestId('log-button').click();
   await expect(page.locator('.log .turn-head')).toContainText(['Mulligans', 'Turn 2 · Claire']); // turn 1 had no events: Lawrence played first and did nothing
 });
+
+test('each player picks a colour the other has not, and the board uses it', async ({ page }) => {
+  await page.goto('./?seed=5');
+  await page.evaluate(() => localStorage.clear());
+  await page.goto('./?seed=5');
+  await page.getByTestId('new-game').click();
+  await page.getByTestId('name-p1').fill('Lawrence');
+  await page.getByTestId('color-p1-green').click();
+  for (const id of ['bb-firebending', 'bb-attacking', 'bb-zuko-tutorial']) await page.getByTestId(`packet-p1-${id}`).click();
+  await page.getByTestId('tab-p2').click();
+  await page.getByTestId('name-p2').fill('Claire');
+  await expect(page.getByTestId('color-p2-green')).toBeDisabled(); // Lawrence's
+  await expect(page.getByTestId('color-p2-green')).toHaveText('L');
+  await page.getByTestId('color-p2-red').click();
+  await expect(page.getByTestId('color-note')).toBeVisible(); // red with green
+  await page.getByTestId('color-p2-purple').click();
+  await expect(page.getByTestId('color-note')).toHaveCount(0);
+  for (const id of ['bb-waterbending', 'bb-allies', 'bb-spells']) await page.getByTestId(`packet-p2-${id}`).click();
+  await page.getByTestId('start').click();
+  await page.getByTestId('play-first').click();
+  const role = (sel: string) => page.locator(sel).first().evaluate((e) => getComputedStyle(e).getPropertyValue('--role').trim());
+  expect(await role('.game .p1')).toBe('#62d68f');
+  expect(await role('.game .p2')).toBe('#b48cff');
+  // A reload comes back to the game with them.
+  await page.reload();
+  await expect(page.locator('.game')).toBeVisible();
+  expect(await role('.game .p1')).toBe('#62d68f');
+});

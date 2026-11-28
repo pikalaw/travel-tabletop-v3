@@ -90,6 +90,8 @@ One format: two-player games under the standard rules of play, with each deck ma
 
 **Choosing packets.** The game setup lists the packets with their colours and themes ("Avatar JS: Firebending (1)"). Packets in three or more colours are legal but harder to cast, so the setup shows the deck's colours and size as packets are picked. A pick can be saved and named for next time.
 
+**Player colours.** Each player picks a colour from a fixed palette: red, blue, green, purple, teal and pink (red and blue by default). The colour the other player took is dimmed and marked with their initial, so the two can never match. Gold is left out, since it means "selected" and "your move". Picking red with green shows a note that some colour-blind players can't tell them apart. The colours are kept with the game, so a reload or a rematch keeps them, and the next setup starts with the last picks. On the board, each player's colour is their half, hand, name, footer, target rings and arrows, undo button, log banners and turn sweep.
+
 ## Rules the app enforces
 
 The engine follows the Magic Comprehensive Rules (at least the 14 November 2025 edition, which added the Avatar mechanics), limited to what the card pool can reach. Every rule below is applied without asking; the players only make the choices the rules give them.
