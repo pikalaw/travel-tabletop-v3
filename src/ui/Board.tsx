@@ -8,6 +8,7 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { GameState, ObjectId, PlayerId, Target } from '../engine/types';
 import { other } from '../engine/types';
 import { stillPassing, type PassAhead } from '../host/controller';
+import { pressIsLong } from './longpress';
 import { battlefieldRow, imageOf, landsStrip, stackItems, stats, targetRings, turnLine, type Permanent, type Pulse } from './model';
 
 /** What the board highlights, and where taps go. */
@@ -77,7 +78,7 @@ function LandsStrip({ s, p, marks, h }: { s: GameState; p: PlayerId; marks: Mark
           const pick = c.ids.find((id) => marks.selectable.has(id));
           const paying = c.ids.some((id) => marks.paying.has(id));
           return (
-            <button key={c.name} class={`chip ${pick ? 'pickable' : ''} ${paying ? 'paying' : ''}`} data-target={pick} onClick={() => h.onCard(pick ?? c.ids[0]!)}>
+            <button key={c.name} class={`chip ${pick ? 'pickable' : ''} ${paying ? 'paying' : ''}`} data-target={pick} data-card={pick ?? c.ids[0]} onClick={() => h.onCard(pick ?? c.ids[0]!)}>
               {c.pips.map((x, i) => <span key={i} class={`pip ${COLOR_CLASS(x.color)} ${x.tapped ? 'off' : ''}`} />)}
               <span>{c.name}{c.ids.length > 1 ? ` ×${c.ids.length}` : ''}</span>
             </button>
@@ -100,7 +101,7 @@ function CardTile({ s, perm, marks, rings, h, attackerOf }: {
   const cls = ['card', pulse ? `pulse ${pulse.kind}` : '', perm.tapped ? 'tapped' : '', pick ? 'pickable' : '', marks.selected.has(perm.id) ? 'picked' : '',
     marks.glow.has(perm.id) ? 'glow' : '', marks.paying.has(perm.id) ? 'paying' : ''].filter(Boolean).join(' ');
   return (
-    <div class={cls} data-target={perm.id} data-testid={`perm-${perm.name}`} onClick={() => h.onCard(perm.id)}>
+    <div class={cls} data-target={perm.id} data-card={perm.id} data-testid={`perm-${perm.name}`} onClick={() => h.onCard(perm.id)}>
       <img src={perm.image} alt={perm.name} draggable={false} />
       {perm.sick && !perm.attacking && <span class="sick" title="Summoning sick: it can't attack or tap yet">zZ</span>}
       {perm.attacking && <span class="atk">ATK</span>}
@@ -168,7 +169,7 @@ function Band({ s, lit, marks, h, children }: { s: GameState; lit: boolean; mark
         {items.map((it) => {
           const pick = marks.selectable.has(it.id);
           return (
-            <div key={it.id} class={`sitem ${it.n === 1 ? 'top' : ''} ${pick ? 'pickable' : ''} ${marks.selected.has(it.id) ? 'picked' : ''}`} data-target={it.id} data-testid={`stack-${it.n}`} onClick={() => h.onCard(it.id)}>
+            <div key={it.id} data-card={it.id} class={`sitem ${it.n === 1 ? 'top' : ''} ${pick ? 'pickable' : ''} ${marks.selected.has(it.id) ? 'picked' : ''}`} data-target={it.id} data-testid={`stack-${it.n}`} onClick={() => h.onCard(it.id)}>
               <img src={it.image} alt="" />
               <span class="st">
                 {it.n === 1 && <span class="first">resolves first</span>}
@@ -193,7 +194,7 @@ function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Ma
   const down = (id: ObjectId) => (e: PointerEvent) => { drag.current = { id, x: e.clientX, y: e.clientY, lifted: false, down: true }; };
   const move = (e: PointerEvent) => {
     const d = drag.current;
-    if (!d?.down) return;
+    if (!d?.down || pressIsLong()) return; // a long press shows the card instead
     if (!d.lifted && Math.abs(e.clientY - d.y) > 14 && Math.abs(e.clientY - d.y) > Math.abs(e.clientX - d.x)) {
       d.lifted = true;
       (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -205,6 +206,7 @@ function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Ma
     const d = drag.current;
     if (!d?.down) return;
     d.down = false;
+    if (pressIsLong()) { if (d.lifted) { setGhost(null); onLift(false); } d.lifted = true; return; } // not a tap, not a drop
     if (!d.lifted) return; // a tap: handled on its click (below)
     setGhost(null);
     onLift(false);
@@ -228,7 +230,7 @@ function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Ma
         const pick = marks.selectable.has(id);
         const cls = ['card', marks.fresh.has(id) ? 'fresh' : '', marks.glow.has(id) ? 'can' : 'no', pick ? 'pickable' : '', marks.selected.has(id) ? 'picked' : '', ghost?.id === id ? 'lifting' : ''].filter(Boolean).join(' ');
         return (
-          <div key={id} class={cls} style={{ marginLeft: `${-overlap}px` }} data-testid={`handcard-${s.setup.cards[s.objects[id]!.card]!.name}`} onPointerDown={down(id)} onClick={tap(id)}>
+          <div key={id} class={cls} style={{ marginLeft: `${-overlap}px` }} data-card={id} data-testid={`handcard-${s.setup.cards[s.objects[id]!.card]!.name}`} onPointerDown={down(id)} onClick={tap(id)}>
             <img src={imageOf(s, id)} alt={s.setup.cards[s.objects[id]!.card]!.name} draggable={false} />
             {marks.fresh.has(id) && <span class="new-tab">NEW</span>}
           </div>

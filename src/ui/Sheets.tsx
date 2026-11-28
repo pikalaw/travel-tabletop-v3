@@ -22,7 +22,7 @@ export function CardList({ s, ids, selectable, selected, onPick, onOpen }: {
   return (
     <div class="cardlist">
       {ids.map((id) => (
-        <button key={id} class={`card ${selectable.has(id) ? 'pickable' : onOpen ? '' : 'no'} ${selected.has(id) ? 'picked' : ''}`}
+        <button key={id} data-card={id} class={`card ${selectable.has(id) ? 'pickable' : onOpen ? '' : 'no'} ${selected.has(id) ? 'picked' : ''}`}
           onClick={() => (onOpen ? onOpen(id) : selectable.has(id) && onPick(id))} data-testid={`list-${nameOf(s, id)}`}>
           <img src={imageOf(s, id)} alt={nameOf(s, id)} />
         </button>

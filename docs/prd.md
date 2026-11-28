@@ -266,13 +266,13 @@ The frames one at a time: [acting](images/mockup-acting.jpg), [hand-off](images/
 
 The board and gestures stay v2's; what changes is that every gesture asks the engine first. A drag is an intent, the engine answers with the choices it needs, and only then does anything move.
 
-| Gesture                                                 | v3 meaning                                                                                                                                |
-|---------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| Drag a card from hand and drop it anywhere on the board | Cast it, or play it if it's a land. Not legal now: it snaps back with the reason ("Sorcery: only in your main phase with an empty stack") |
-| Tap a land or other mana source                         | Nothing: mana is paid automatically as you cast (see Rules). A long-press still shows the card                                            |
-| Long-press a card                                       | The full view, listing what you can do with it now: Cast, abilities to activate, Attack, Block. Illegal ones are greyed with the reason   |
-| Drag an ability line onto the stack                     | Activate it, as v2's drag to the Stack                                                                                                    |
-| Tap creatures in combat                                 | Declare attackers, then blockers: v2's combat mode, now the real declaration                                                              |
+| Gesture                                                 | v3 meaning                                                                                                                                                                                                                                                |
+|---------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Drag a card from hand and drop it anywhere on the board | Cast it, or play it if it's a land. Not legal now: it snaps back with the reason ("Sorcery: only in your main phase with an empty stack")                                                                                                                 |
+| Tap a land or other mana source                         | Nothing: mana is paid automatically as you cast (see Rules). A long-press still shows the card                                                                                                                                                            |
+| Long-press a card                                       | The full view, on any card anywhere (in play, attached, a lands chip, the stack, a hand, a pile, a prompt's list), whatever a tap means there; it lists what you can do with it now: Cast, abilities to activate. Illegal ones are greyed with the reason |
+| Drag an ability line onto the stack                     | Activate it, as v2's drag to the Stack                                                                                                                                                                                                                    |
+| Tap creatures in combat                                 | Declare attackers, then blockers: v2's combat mode, now the real declaration                                                                                                                                                                              |
 
 **Casting a card.** Dragging a card out of your hand and dropping it means "cast it"; where it lands only matters for targets. The app then shows the card's real path, so players see the rule:
 
@@ -313,7 +313,7 @@ A card that can't be cast shows no glow; the full view says why ("needs {R}{R}: 
 - The full-screen card view, with its gestures and its scroll-to-shrink.
 - Rulings.
 - Card text with abilities.
-- The log, and the "while you were away" list.
+- The log, behind a log icon on the footer and the hand-off bar: the same icon opens and closes it. Lines since a player last tapped Look are marked, which replaces v2's "while you were away" list.
 - Long-press tips.
 - Backups.
 - The finished-games list.

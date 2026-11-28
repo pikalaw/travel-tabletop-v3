@@ -16,6 +16,7 @@ import { Board, type Marks } from './Board';
 import { CardView, type CardAction } from './CardView';
 import { nextNeed, toChoice, withDrop, type Intent, type Need } from './flow';
 import { beats, cardImage, formatCost, nameOf, passMeaning, playerName, siblings, type Beat } from './model';
+import { installLongPress } from './longpress';
 import { CardList, Sheet } from './Sheets';
 
 const EMPTY: Marks = { selectable: new Set(), selected: new Set(), glow: new Set(), paying: new Set(), blocks: new Map(), fresh: new Set(), pulse: new Map() };
@@ -43,6 +44,35 @@ function asking(s: GameState): string {
     case 'payOrElse': return `pay ${d.cost}${d.waterbend ? `waterbend {${d.waterbend}}` : ''}?`;
     case 'pick': return d.text.toLowerCase();
   }
+}
+
+/** The log icon: lines of text. */
+const LogIcon = () => (
+  <svg class="icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+    <path d="M8 6h12M8 12h12M8 18h8" /><circle cx="4" cy="6" r="1" fill="currentColor" /><circle cx="4" cy="12" r="1" fill="currentColor" /><circle cx="4" cy="18" r="1" fill="currentColor" />
+  </svg>
+);
+
+/**
+ * The log (v2's log): every public event, numbered by turn, newest last and in view. Lines since
+ * the player last acted are marked, which is what "while you were away" used to show.
+ */
+function LogPanel({ s, since }: { s: GameState; since: number | null }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (panel.current) panel.current.scrollTop = panel.current.scrollHeight; }, [s.events.length]);
+  const events = s.events.slice(-400);
+  const offset = s.events.length - events.length;
+  return (
+    <div class="log-panel" data-testid="log" ref={panel}>
+      <ol class="log">
+        {events.map((e, i) => (
+          <li key={offset + i} class={since !== null && offset + i >= since ? 'new' : ''}>
+            <span class="dim">T{e.turn}</span> {e.text}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
 }
 
 /** The undo icon: an arrow curving back. */
@@ -90,7 +120,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const [picking, setPicking] = useState<Target[]>([]);
   const [viewing, setViewing] = useState<ObjectId | null>(null);
   const [pile, setPile] = useState<{ p: PlayerId; pile: 'graveyard' | 'exile' } | null>(null);
-  const [menu, setMenu] = useState<'menu' | 'log' | 'undo' | 'ahead' | 'resign' | null>(null);
+  const [menu, setMenu] = useState<'menu' | 'undo' | 'ahead' | 'resign' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [folded, setFolded] = useState(false);
   // Answers being built for the engine's decision; reset whenever the decision changes.
@@ -102,10 +132,16 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const [split, setSplit] = useState<Record<string, number>>({});
   const [modes, setModes] = useState<number[]>([]);
   const [x, setX] = useState(0);
-  const [away, setAway] = useState<string[] | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
+  /** Where the log's "since you last acted" lines start, for the player who just looked. */
+  const [since, setSince] = useState<number | null>(null);
 
   // ----- playback (PRD, "Playing"): after a tap, each spell or ability that resolved and each round
   // of combat damage is shown in turn, about a second each, with what it changed pulsing. A tap skips.
+  // A long press on any card opens its full view (longpress.ts).
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => (root.current ? installLongPress(root.current, (id) => setViewing(id)) : undefined), []);
+
   const states = session.game.states;
   const seen = useRef(states.length);
   const [play, setPlay] = useState<{ beats: Beat[]; k: number } | null>(null);
@@ -134,7 +170,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const send = (c: Choice, opts: Parameters<typeof choose>[2] = {}) => {
     const next = choose(session, c, opts);
     if ('refused' in next) { setToast(next.refused); return false; }
-    setIntent(null); setPicking([]); setViewing(null); setAway(null);
+    setIntent(null); setPicking([]); setViewing(null);
     onChange(next);
     return true;
   };
@@ -247,15 +283,13 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
     else startIntent({ kind: 'activate', object: id, ability: a.ability, targets: [] });
   };
 
-  // ----- Look: the acting player takes the device, and sees what happened since they last acted
+  // ----- Look: the acting player takes the device; the log marks what happened since they last acted
   function takeLook() {
     if (!actor) return;
     const g = session.game;
     let i = g.record.choices.length - 1;
     while (i >= 0 && (g.record.choices[i]!.auto || g.record.choices[i]!.player !== actor)) i--;
-    const since = i >= 0 ? g.states[i + 1]!.events.length : s.events.length;
-    const lines = s.events.slice(since).map((e) => e.text);
-    setAway(lines.length ? lines.slice(-6) : null);
+    setSince(i >= 0 ? g.states[i + 1]!.events.length : null);
     onChange(look(session));
   }
 
@@ -268,6 +302,9 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const undoWords = undoOther ? `Undo ${playerName(s, undoOther.player)}'s ${UNDO_WORDS[undoOther.choice.kind] ?? 'move'}` : 'Undo';
   // The undo icon; taking back the other player's decision adds whose and what ("Claire's block").
   const undoLabel = <><UndoIcon />{undoOther && <span class="undo-who">{undoWords.replace(/^Undo /, '')}</span>}</>;
+  const logButton = (
+    <button class={`btn ${logOpen ? 'on' : ''}`} onClick={() => setLogOpen((o) => !o)} aria-label="Log" data-tip="Open or close the log: every event, newest last; what happened since you last looked is marked." data-testid="log-button"><LogIcon /></button>
+  );
   const undoClass = `btn ${undoOther ? `undo-other ${undoOther.player}` : ''}`;
 
   // ----- the prompt panel and the footer
@@ -466,6 +503,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       return (
         <div class={`foot handoff ${actor}`} data-testid="handoff">
           <span class="say"><b class={`who ${actor}`}>{playerName(s, actor)} to act</b>: {asking(s)}</span>
+          {logButton}
           {canUndo(session.game) && <button class={undoClass} onClick={askUndo} aria-label={undoWords} data-tip="Take back the last decision. Taking back the other player's asks first." data-testid="bar-undo">{undoLabel}</button>}
           {d.kind === 'priority' && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="bar-pass-ahead">»</button>}
           {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-tip="Pass without showing your hand. Nothing flips." aria-label="Pass" data-testid="bar-pass">›</button>}
@@ -476,6 +514,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
     return (
       <div class={`foot ${d.player}`}>
         <span class="say">{d.kind === 'priority' && !intent ? <>Pass: <b>{passMeaning(s)}</b></> : <b>{playerName(s, d.player)}</b>}</span>
+        {logButton}
         <button class={undoClass} disabled={!canUndo(session.game)} onClick={askUndo} aria-label={undoWords} data-tip="Take back the last decision, with the automatic passes after it." data-testid="undo">{undoLabel}</button>
         <button class="btn" onClick={() => setMenu('menu')} data-tip="Log, redo, hide your hand, resign, or leave the game." data-testid="menu">☰</button>
         {d.kind === 'priority' && !intent && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="pass-ahead">»</button>}
@@ -508,15 +547,9 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const pileIds = pile ? s.zones[`${pile.p}.${pile.pile}`] : [];
 
   return (
-    <div class="game" data-facing={bottom}>
+    <div class="game" data-facing={bottom} ref={root}>
       <Board s={beat ? states[beat.at]! : s} ahead={session.game.ahead ?? {}} bottom={bottom} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(beat ? { band: <BeatBanner s={s} beat={beat} n={play!.k + 1} of={play!.beats.length} /> } : orderBand ? { band: orderBand } : {})} />
       {beat && <div class="skip" data-testid="playback" onClick={() => setPlay(null)}><span>Tap to skip</span></div>}
-      {away && !off && (
-        <div class="away" data-testid="away" onClick={() => setAway(null)}>
-          <b>While you were away</b>
-          {away.map((t, i) => <span key={i}>{t}</span>)}
-        </div>
-      )}
       {prompt}
       {footer}
       {toast && <div class="toast" data-testid="toast" onClick={() => setToast(null)}>{toast}</div>}
@@ -529,7 +562,6 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
       {menu === 'menu' && (
         <Sheet title="Menu" onClose={() => setMenu(null)}>
           <div class="menu">
-            <button class="btn" onClick={() => setMenu('log')} data-testid="open-log">Log</button>
             <button class="btn" disabled={!canRedo(session.game)} onClick={() => { setMenu(null); onChange(redoLast(session)); }}>Redo</button>
             <button class="btn" onClick={() => { setFolded(true); setMenu(null); }}>Hide my hand</button>
             {d && <button class="btn" onClick={() => setMenu('resign')} data-testid="resign">Resign</button>}
@@ -559,11 +591,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
           </div>
         </Sheet>
       )}
-      {menu === 'log' && (
-        <Sheet title="Log" onClose={() => setMenu(null)}>
-          <ol class="log" data-testid="log">{[...s.events].reverse().slice(0, 300).map((e, i) => <li key={i}><span class="dim">T{e.turn}</span> {e.text}</li>)}</ol>
-        </Sheet>
-      )}
+      {logOpen && <LogPanel s={s} since={since} />}
       {menu === 'undo' && lastManual && (
         <Sheet title="Undo" onClose={() => setMenu(null)}>
           <p>Undo {playerName(s, lastManual.player)}'s {lastManual.choice.kind}?</p>

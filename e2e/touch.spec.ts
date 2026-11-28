@@ -83,3 +83,34 @@ test('holding a button shows its tip; lifting hides it, and the button is not pr
   await page.getByTestId('look').tap(); // a tap still presses it
   await expect(page.getByTestId('keep')).toBeVisible();
 });
+
+/** Holds a finger on a locator's left strip for `ms`, then lifts. */
+async function longPress(page: Page, l: ReturnType<Page['locator']>, ms = 700) {
+  const b = (await l.boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + 10, y: b.y + b.height / 2 }] });
+  await page.waitForTimeout(ms);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(300);
+}
+
+test('a long press on any card opens its full view; the log icon opens and closes the log', async ({ page }) => {
+  await toLawrencesTurn(page);
+  // in hand: the view opens, and nothing is cast or played
+  const hand = await page.locator('.hand .card').count();
+  await longPress(page, page.locator('.hand .card').first());
+  await expect(page.getByTestId('card-view')).toBeVisible();
+  await page.getByTestId('close-view').tap();
+  await expect(page.locator('.hand .card')).toHaveCount(hand);
+  // a land in play, on the lands strip
+  await page.getByTestId('handcard-Mountain').first().tap();
+  await page.getByTestId('action-play').tap();
+  await longPress(page, page.getByTestId('lands-p1').locator('.chip').first());
+  await expect(page.getByTestId('full-img')).toHaveAttribute('alt', 'Mountain');
+  await page.getByTestId('close-view').tap();
+  // the log: one icon opens and closes it
+  await page.getByTestId('log-button').tap();
+  await expect(page.getByTestId('log')).toContainText('Player 1 plays Mountain');
+  await page.getByTestId('log-button').tap();
+  await expect(page.getByTestId('log')).toHaveCount(0);
+});

@@ -203,8 +203,6 @@ button { font: inherit; color: inherit; }
 .arrow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; overflow: visible; }
 .arrow line { stroke: var(--role); stroke-width: 2.5; stroke-dasharray: 6 4; opacity: .9; }
 .arrow marker path { fill: var(--role); }
-.away { flex: none; display: flex; flex-direction: column; gap: 1px; padding: 6px 10px; background: #15201a; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); max-height: 22dvh; overflow-y: auto; }
-.away b { color: var(--ink); font-size: 11px; text-transform: uppercase; letter-spacing: .3px; }
 .sick { position: absolute; left: 3px; top: 3px; background: rgba(0, 0, 0, .8); color: #b9c7ff; border: 1px solid rgba(185, 199, 255, .5); border-radius: 7px; padding: 0 5px; font-size: 10px; font-weight: 800; font-style: italic; z-index: 1; }
 .hand .card.fresh { transform: translateY(-6px); }
 .new-tab { position: absolute; left: 50%; top: -7px; transform: translateX(-50%); background: var(--gold); color: #17130a; font-size: 9px; font-weight: 800; letter-spacing: .5px; padding: 1px 6px; border-radius: 6px; z-index: 2; box-shadow: 0 1px 4px rgba(0, 0, 0, .6); }
@@ -235,7 +233,8 @@ button { font: inherit; color: inherit; }
 .float.up { color: #8fe39a; } .float.down { color: #ff8b7b; } .float.info { color: #f3dfae; }
 .life .float { top: -2px; left: 110%; transform: none; }
 @keyframes float-up { from { opacity: 0; margin-top: 8px; } 15% { opacity: 1; } to { opacity: 1; margin-top: -14px; } }
-.foot.handoff { gap: 6px; } .foot.handoff .btn { padding: 9px 10px; }
+.foot.handoff { gap: 5px; } .foot.handoff .btn { padding: 9px 8px; min-width: 42px; }
+.foot.handoff .say { font-size: 11.5px; }
 .thumbs { display: flex; justify-content: center; align-items: center; gap: 4px; }
 .thumb-wrap { display: flex; align-items: center; gap: 4px; }
 .thumb { height: 64px; border-radius: 4px; opacity: .6; cursor: pointer; }
@@ -249,3 +248,7 @@ button { font: inherit; color: inherit; }
 .foot .btn[data-testid$="pass"], .foot .btn[data-testid$="pass-ahead"] { font-size: 24px; line-height: 1; padding-top: 5px; padding-bottom: 7px; }
 .foot .icon { flex: none; }
 .undo-who { font-size: 11px; line-height: 1.1; text-align: left; }
+.log-panel { position: absolute; left: 0; right: 0; bottom: 60px; max-height: 55dvh; overflow-y: auto; z-index: 22; background: rgba(12, 20, 16, .97); border-top: 1px solid rgba(201, 166, 90, .5); padding: 8px 10px; box-shadow: 0 -10px 24px rgba(0, 0, 0, .5); }
+.log-panel .log li { font-size: 12.5px; padding: 1px 0 1px 6px; border-left: 2px solid transparent; }
+.log-panel .log li.new { border-left-color: var(--gold); color: var(--ink); background: rgba(201, 166, 90, .08); }
+.btn.on { box-shadow: 0 0 0 2px var(--gold) inset; }
