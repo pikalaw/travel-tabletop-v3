@@ -101,7 +101,7 @@ export function DecisionPrompt({ s, d, a, send }: { s: GameState; d: Decision; a
     case 'legend': return (
       <div class="prompt">
         <p>Legend rule: choose the {d.name} to keep.</p>
-        <div class="row"><button class="btn primary" disabled={!a.chosen.length} onClick={() => send({ kind: 'legend', keep: a.chosen[0]! })}>Keep</button></div>
+        <div class="row"><button class="btn primary" disabled={!a.chosen.length} onClick={() => send({ kind: 'legend', keep: a.chosen[0]! })} data-testid="keep-legend">Keep</button></div>
       </div>
     );
     case 'triggerOrder': return (
@@ -184,6 +184,8 @@ export interface Casting {
   picking: Target[];
   setPicking: (t: Target[]) => void;
   pickTarget: (t: Target) => void;
+  /** Picks an object for a cost that sacrifices or discards; the intent takes them once there are enough. */
+  pickCost: (id: ObjectId) => void;
   modes: number[];
   setModes: Dispatch<StateUpdater<number[]>>;
   x: number;
@@ -217,10 +219,10 @@ export function IntentPrompt(c: Casting) {
         <div class="row">{cancel}</div>
       </div>
     );
-    case 'sacrifice': return (
+    case 'sacrifice': case 'discard': return (
       <div class="prompt">
-        <p><b>{name}</b>: choose what to sacrifice</p>
-        <div class="chips-row">{need.options.map((id) => <button key={id} class="btn chipbtn" onClick={() => setIntent({ ...intent, sacrificing: [id] })} data-testid={`sacrifice-${nameOf(s, id)}`}>{nameOf(s, id)}</button>)}</div>
+        <p><b>{name}</b>: choose {need.count > 1 ? `${need.count} ` : ''}to {need.kind}{need.count > 1 ? ` (${picking.length}/${need.count})` : ''}</p>
+        <div class="chips-row">{need.options.map((id) => <button key={id} class={`btn chipbtn ${picking.includes(id) ? 'on' : ''}`} onClick={() => c.pickCost(id)} data-testid={`${need.kind}-${nameOf(s, id)}`}>{nameOf(s, id)}</button>)}</div>
         <div class="row">{cancel}</div>
       </div>
     );

@@ -161,6 +161,9 @@ export interface Resolving {
   created?: ObjectId;
   attachedTo?: ObjectId;
   eventAmount?: number;
+  /** What the last "choose" picked, and the cards discarded, for later effects ("it", "this way"). */
+  chosen?: ObjectId[];
+  discarded?: ObjectId[];
   /** Cards an effect looked at, kept across its decision. */
   looked?: ObjectId[];
 }
@@ -216,10 +219,10 @@ export type Choice =
   | { kind: 'bottom'; cards: ObjectId[] }
   | { kind: 'pass' }
   | { kind: 'play'; object: ObjectId }
-  /** `cost`: which of the spell's additional-cost options; `sacrificing`: the permanent a sacrifice cost takes. */
-  | { kind: 'cast'; object: ObjectId; targets?: Target[][]; modes?: number[]; x?: number; cost?: number; sacrificing?: ObjectId[] }
+  /** `cost`: which of the spell's additional-cost options; `sacrificing`, `discarding`: what a cost that takes objects takes. */
+  | { kind: 'cast'; object: ObjectId; targets?: Target[][]; modes?: number[]; x?: number; cost?: number; sacrificing?: ObjectId[]; discarding?: ObjectId[] }
   /** `tapping`: the creatures tapped for a "tap an untapped creature you control" cost. */
-  | { kind: 'activate'; object: ObjectId; ability: number; targets?: Target[][]; tapping?: ObjectId[] }
+  | { kind: 'activate'; object: ObjectId; ability: number; targets?: Target[][]; tapping?: ObjectId[]; sacrificing?: ObjectId[]; discarding?: ObjectId[] }
   | { kind: 'order'; triggers: number[] }
   | { kind: 'targets'; targets: Target[][] }
   | { kind: 'color'; color: Color }
@@ -248,6 +251,8 @@ export interface DelayedTrigger {
   untilTurn?: number;
   /** It triggered (once only), or it was reflexive and put straight into pending triggers. */
   done?: boolean;
+  /** "Whenever …": it triggers every time, until `untilTurn` ends. */
+  repeats?: boolean;
 }
 
 export interface Refusal { refused: string }
@@ -300,9 +305,13 @@ export interface GameState {
    */
   delayed: DelayedTrigger[];
   /** Counters on permanents that left the battlefield this turn, for "its counters" (608.2h). */
-  lastKnown: Record<ObjectId, { counters: Record<string, number> }>;
+  lastKnown: Record<ObjectId, { counters: Record<string, number>; movedTo?: ObjectId }>;
   /** What happened this turn, for "this turn" conditions and "second card" triggers. */
-  turnLog: { attacked: Record<PlayerId, boolean>; lifeLost: Record<PlayerId, number>; drawn: Record<PlayerId, number>; tapped: Record<ObjectId, number> };
+  turnLog: {
+    attacked: Record<PlayerId, boolean>; lifeLost: Record<PlayerId, number>; drawn: Record<PlayerId, number>; tapped: Record<ObjectId, number>;
+    /** Lands that entered under each player's control, and creature spells each player cast. */
+    landsEntered: Record<PlayerId, number>; creatureSpells: Record<PlayerId, number>;
+  };
   result: GameResult | null;
   /** Public events, oldest first. */
   events: GameEvent[];

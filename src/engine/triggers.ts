@@ -7,6 +7,7 @@
 import type { Filter, TriggeredAbility, TriggerEvent } from './abilities';
 import { view } from './characteristics';
 import { holds, matches, type Context, type View } from './evaluate';
+import { manaValue } from './mana';
 import type { GameObject, GameState, ObjectId, PlayerId, Step } from './types';
 
 export type GameEventKind =
@@ -86,12 +87,25 @@ function eventMatches(s: GameState, v: View, w: TriggerEvent, self: boolean | un
   return false;
 }
 
+/** A Saga's chapter ability triggers as lore counters put on it reach its number (714.2b). */
+function chapterReached(s: GameState, chapter: number, ev: GameEventKind, ctx: Context): boolean {
+  if (ev.kind !== 'countersPut' || ev.counter !== 'lore' || ev.object !== ctx.source) return false;
+  const now = s.objects[ev.object]?.counters.lore ?? 0;
+  return now >= chapter && now - ev.n < chapter;
+}
+
+/** A Saga's final chapter number (714.2c). */
+export const finalChapter = (s: GameState, o: GameObject) => Math.max(0, ...(s.setup.cards[o.card]?.script?.triggered ?? []).map((t) => t.chapter ?? 0));
+
 /** Reports an event: every matching triggered ability on the battlefield, and every delayed one, waits to go on the stack. */
 export function fire(s: GameState, ev: GameEventKind): void {
   const v = view(s);
   const about = 'object' in ev ? { eventObject: ev.object } : {};
-  const amount = ev.kind === 'countersPut' ? { eventAmount: ev.n } : {};
+  // "That much" (counters put), or a cast spell's mana value as it was cast ("that spell's mana value").
+  const spellValue = ev.kind === 'cast' && s.objects[ev.object] ? manaValue(s.setup.cards[s.objects[ev.object]!.card]!.manaCost) : undefined;
+  const amount = ev.kind === 'countersPut' ? { eventAmount: ev.n } : spellValue !== undefined ? { eventAmount: spellValue } : {};
   const consider = (t: TriggeredAbility, ctx: Context, self: boolean | undefined) => {
+    if (t.chapter !== undefined) return chapterReached(s, t.chapter, ev, ctx);
     if (!eventMatches(s, v, t.when, self, ev, ctx)) return false;
     if (t.onlyIf && !holds(s, v, t.onlyIf, ctx)) return false;
     if (t.if && !holds(s, v, t.if, ctx)) return false; // 603.4: the intervening "if" is checked as it triggers
@@ -111,7 +125,7 @@ export function fire(s: GameState, ev: GameEventKind): void {
     if (d.done || (d.untilTurn !== undefined && s.turn > d.untilTurn)) return;
     if (d.about && (!('object' in ev) || ev.object !== d.about)) return;
     if (!consider(d.ability, { controller: d.controller, source: d.source, ...about, ...amount }, false)) return;
-    d.done = true; // "When that creature dies this turn": once
+    if (!d.repeats) d.done = true; // "When that creature dies this turn": once
     s.pendingTriggers.push({ controller: d.controller, source: d.source, sourceName: d.sourceName, card: d.card, index: DELAYED + k, ...about, ...amount });
   });
 }

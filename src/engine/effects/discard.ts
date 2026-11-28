@@ -16,5 +16,7 @@ export const discard: Handler<Discard> = (e, r) => {
     if (!picked) return r.ask({ kind: 'pick', player: p, from: [...hand], options: [...hand], min: k, max: k, text: `Discard ${k === 1 ? 'a card' : `${k} cards`}`, done: 'Discard' });
     cards = picked.cards;
   }
-  for (const id of cards) { r.log(`${r.playerName(p)} discards ${r.cardName(id)}`); move(r.s, id, zoneOf(p, 'graveyard')); }
+  const discarded: string[] = [];
+  for (const id of cards) { r.log(`${r.playerName(p)} discards ${r.cardName(id)}`); discarded.push(move(r.s, id, zoneOf(p, 'graveyard')).id); }
+  r.s.resolving!.discarded = discarded; // "when you discard a nonland card this way"
 };

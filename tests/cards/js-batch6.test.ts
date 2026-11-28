@@ -43,8 +43,12 @@ describe('Jumpstart, batch 6', () => {
     const dp = ids.hand1[0]!, guard = ids.p2[0]!, inspector = ids.p1[0]!;
     expect(refused(s, { kind: 'cast', object: dp, targets: [[guard]] })).toMatch(/additional cost/);
     expect(refused(s, { kind: 'cast', object: dp, cost: 0, targets: [[guard]] })).toMatch(/mana/);
-    expect(refused(s, { kind: 'cast', object: dp, cost: 1, targets: [[guard]] })).toMatch(/sacrifice/);
-    const after = settle(passBoth(act(s, { kind: 'cast', object: dp, cost: 1, sacrificing: [inspector], targets: [[guard]] })));
+    // With one creature to sacrifice, there's nothing to choose: it goes.
+    const after = settle(passBoth(act(s, { kind: 'cast', object: dp, cost: 1, targets: [[guard]] })));
+    expect(after.zones['p1.graveyard'].map((id) => after.setup.cards[after.objects[id]!.card]!.name)).toContain('Callous Inspector');
+    const two = board({ p1: ['Callous Inspector', 'Komodo Rhino', 'Swamp'], p2: ['Capital Guard'], hand1: ['Deadly Precision'] });
+    expect(refused(two.s, { kind: 'cast', object: two.ids.hand1[0]!, cost: 1, targets: [[two.ids.p2[0]!]] })).toMatch(/sacrifice/);
+    expect(inspector).toBeDefined();
     expect(named(after, 'Capital Guard')).toHaveLength(0);
     expect(named(after, 'Callous Inspector')).toHaveLength(0);
   });

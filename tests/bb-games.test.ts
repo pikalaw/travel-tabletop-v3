@@ -8,7 +8,7 @@ import { pool } from '../src/cards/pool';
 import { gameSetup } from '../src/cards/setup';
 import { attackers as attacking, proposedSplit } from '../src/engine/combat';
 import { characteristics } from '../src/engine/characteristics';
-import { answer, attackCandidates, blockCandidates, legalActions, sacrificeCandidates, targetOptions, triggerTargetOptions } from '../src/engine/engine';
+import { answer, attackCandidates, blockCandidates, castCost, costChoices, legalActions, targetOptions, triggerTargetOptions } from '../src/engine/engine';
 import { packetPlayable } from '../src/cards/coverage';
 import { checkInvariants } from '../src/engine/invariants';
 import { legalTargets } from '../src/engine/targets';
@@ -45,8 +45,10 @@ function randomAnswer(s: GameState): Choice {
       // An additional-cost choice ("pay {4} or sacrifice …"): one at random, with a random sacrifice.
       const costs = c.kind === 'cast' ? spell?.costOptions : undefined;
       const cost = costs ? n(costs.length) : undefined;
-      const sac = cost !== undefined ? costs![cost]!.cost.sacrifice : undefined;
-      const paying = { ...(cost !== undefined ? { cost } : {}), ...(sac ? { sacrificing: [pick([...sacrificeCandidates(s, d.player, sac, c.object), c.object])] } : {}) };
+      const choices = costChoices(s, d.player, c.kind === 'cast' ? castCost(s, c.object, cost) : s.setup.cards[o.card]!.script!.activated![c.ability]!.cost, c.object);
+      const some_ = (k: { options: string[]; count: number } | undefined) => (k ? [...k.options].sort(() => n(3) - 1).slice(0, k.count) : undefined);
+      const sacrificing = some_(choices.sacrifice), discarding = some_(choices.discard);
+      const paying = { ...(cost !== undefined ? { cost } : {}), ...(sacrificing ? { sacrificing } : {}), ...(discarding ? { discarding } : {}) };
       const opts = targetOptions(s, d.player, c.object, c.kind === 'activate' ? c.ability : undefined);
       const x = s.setup.cards[o.card]!.manaCost.some((m) => m.kind === 'x') ? n(4) : undefined;
       return { ...c, ...paying, ...(opts.length ? { targets: opts.map((t) => (t.legal.length ? [pick(t.legal)] : [])) } : {}), ...(x !== undefined ? { x } : {}) };

@@ -72,7 +72,10 @@ function removedAbilities(s: GameState, base: View): Set<ObjectId> {
  * private copy of the state, so the cache is keyed by these rather than by the state object alone.
  */
 function fingerprint(s: GameState): string {
-  let fp = `${s.active}|${s.effects.length}|${s.nextTimestamp}|${s.zones['p1.graveyard'].join()}|${s.zones['p2.graveyard'].join()}|${s.zones.stack.join()}|`;
+  // Everything a static ability's "as long as" may read: the turn, graveyards, hands, the stack, this turn's log.
+  const log = s.turnLog;
+  let fp = `${s.turn}|${s.active}|${s.step}|${s.effects.length}|${s.nextTimestamp}|${s.zones['p1.graveyard'].join()}|${s.zones['p2.graveyard'].join()}|${s.zones['p1.hand'].length}|${s.zones['p2.hand'].length}|${s.zones.stack.join()}|`
+    + `${log.drawn.p1},${log.drawn.p2},${log.landsEntered.p1},${log.landsEntered.p2},${log.lifeLost.p1},${log.lifeLost.p2},${log.attacked.p1},${log.attacked.p2}|`;
   for (const id of s.zones.battlefield) {
     const o = s.objects[id]!;
     fp += `${id}${o.controller}${o.tapped ? 't' : ''}${o.attacking ?? ''}${o.blocking ? 'b' : ''}${o.attachedTo ?? ''}`;
@@ -117,9 +120,9 @@ function compute(s: GameState): Map<ObjectId, Characteristics> {
   });
   // Layer 6: ability-adding and ability-removing effects, in timestamp order.
   for (const id of removed) { const c = map.get(id); if (c) c.abilitiesRemoved = true; }
-  each((e) => !!(e.addKeywords || e.removeAllAbilities || e.anyColorMana), (c, a) => {
-    if (a.effect.removeAllAbilities) { c.keywords = []; delete c.anyColorMana; }
-    if (a.effect.anyColorMana) c.anyColorMana = true;
+  each((e) => !!(e.addKeywords || e.removeAllAbilities || e.addsMana), (c, a) => {
+    if (a.effect.removeAllAbilities) { c.keywords = []; delete c.addsMana; }
+    if (a.effect.addsMana) c.addsMana = a.effect.addsMana;
     for (const k of a.effect.addKeywords ?? []) if (!c.keywords.includes(k)) c.keywords.push(k);
   });
   // Layer 7a: characteristic-defining abilities.

@@ -58,7 +58,9 @@ export type ObjectRef =
   | 'triggerObject'                  // the object the trigger's event is about
   | 'attachedTo'                     // what this Aura or Equipment is attached to
   | 'created'                        // the token this effect list created last ("put a counter on it")
-  | 'affected';                      // in a static effect's amount: the object it's being applied to ("each of its creature types")
+  | 'affected'                       // in a static effect's amount: the object it's being applied to ("each of its creature types")
+  | 'chosen'                         // the objects this resolution's last choice picked ("sacrifice a land")
+  | 'thisCard';                      // the source card in its new zone after it left the battlefield ("return this card")
 
 // ----- Numbers ---------------------------------------------------------------------------------
 
@@ -76,6 +78,8 @@ export type Amount =
   | { playerCounters: string }
   /** How many creature types an object has, up to `max` (after type-changing effects). */
   | { creatureTypesOf: ObjectRef; max?: number }
+  /** Half, rounded up ("half the lands you control, rounded up"). */
+  | { half: Amount }
   | { times: Amount; by: number }
   | { plus: Amount; and: number };
 
@@ -87,8 +91,15 @@ export type Condition =
   /** The object chosen for a target spec matches a filter ("if it has power 4 or greater"). */
   | { target: number; is: Filter }
   /** What happened this turn (raid, "if an opponent lost life this turn"). */
-  | { thisTurn: 'youAttacked' | 'opponentLostLife' }
+  | { thisTurn: 'youAttacked' | 'opponentLostLife' | 'aLandEnteredForYou' }
+  /** "If you've drawn two or more cards this turn". */
+  | { drawnThisTurn: number }
+  /** From the beginning of combat to the end of combat. */
+  | 'duringCombat'
+  /** A card this resolution discarded matches ("when you discard a nonland card this way"). */
+  | { discarded: Filter }
   | { not: Condition }
+  | { any: Condition[] }
   | { all: Condition[] }
   | 'yourTurn'
   /** The trigger's object became tapped for the first time this turn. */
@@ -123,8 +134,11 @@ export interface Cost {
   payLife?: number;
   /** "Tap an untapped creature you control" (not {T}: summoning sickness doesn't matter). */
   tapAnother?: Filter;
-  /** "Sacrifice an artifact or creature": the caster chooses one matching this filter. */
+  /** "Sacrifice an artifact or creature": the payer chooses `sacrificeCount` (default one) matching this filter. */
   sacrifice?: Filter;
+  sacrificeCount?: Amount;
+  /** "Discard a card": the payer chooses which. */
+  discard?: number;
 }
 
 /** One mode of a modal spell (700.2): its own targets and effects, target indices local to it. */
@@ -181,7 +195,9 @@ export type TriggerEvent =
   /** "Whenever you put one or more +1/+1 counters on a creature": counters of `kind` put by an effect `you` control. */
   | { countersPut: Filter; kind: string }
   /** A reflexive trigger's (603.12): it never matches an event; its effect puts it on the stack. */
-  | { reflexive: true };
+  | { reflexive: true }
+  /** A Saga's chapter ability: the `chapter` it is (714.2b). */
+  | { lore: true };
 
 export interface TriggeredAbility {
   when: TriggerEvent;
@@ -189,6 +205,8 @@ export interface TriggeredAbility {
   self?: boolean;
   /** Part of the trigger event, checked only as it triggers ("Whenever ~ and at least one other creature attack"). */
   onlyIf?: Condition;
+  /** A Saga's chapter (714.2): triggers as its lore counters reach this number. */
+  chapter?: number;
   /** "Whenever one or more …": one trigger for all the events that happen at once (one combat damage step, one declaration). */
   oneOrMore?: boolean;
   /** An intervening "if" clause (603.4): checked when it triggers and again on resolution. */
@@ -219,8 +237,12 @@ export interface Continuous {
   modify?: [Amount, Amount];
   /** Not a characteristic but a replacement with a duration: "if it would die this turn, exile it instead". */
   exileIfWouldDie?: boolean;
-  /** "Has '{T}: Add one mana of any color'" (Great Divide Guide): tapping it can make any colour. */
-  anyColorMana?: boolean;
+  /** A granted "{T}: Add …" mana ability (Great Divide Guide, Tectonic Split, Princess Yue's Moon): the kinds, and how many. */
+  addsMana?: { makes: (Color | 'C')[]; n?: number };
+  /** "Lesson spells you cast cost {1} less" (612, 601.2f): spells matching the filter, from wherever they're cast. */
+  reducesCost?: { spells: Filter; by: number };
+  /** "You may cast the first creature spell you cast each turn as though it had flash". */
+  firstCreatureFlash?: boolean;
   /** Earthbent: when this land dies or is exiled, it returns to the battlefield tapped (701.65). */
   earthbent?: boolean;
 }

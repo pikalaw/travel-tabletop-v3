@@ -145,6 +145,13 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
     setViewing(null); setModes([]); setX(0); setPicking([]);
     setIntent(withDrop(s, actor, i, drop));
   };
+  const pickCost = (id: ObjectId) => {
+    if (!intent || (need?.kind !== 'sacrifice' && need?.kind !== 'discard')) return;
+    const next = picking.includes(id) ? picking.filter((y) => y !== id) : [...picking, id];
+    if (next.length < need.count) { setPicking(next); return; }
+    setIntent({ ...intent, [need.kind === 'sacrifice' ? 'sacrificing' : 'discarding']: next });
+    setPicking([]);
+  };
   const pickTarget = (t: Target) => {
     if (!intent || need?.kind !== 'target') return;
     const next = picking.includes(t) ? picking.filter((y) => y !== t) : [...picking, t];
@@ -163,7 +170,7 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
   // ----- what the board marks
   let marks: Marks = { ...EMPTY, glow, fresh: shown ? newInHand(session, me) : new Set() };
   if (!off && need?.kind === 'target') marks = { ...marks, selectable: new Set(need.legal), selected: new Set(picking) };
-  else if (!off && (need?.kind === 'tap' || need?.kind === 'sacrifice')) marks = { ...marks, selectable: new Set(need.options), selected: new Set(picking) };
+  else if (!off && (need?.kind === 'tap' || need?.kind === 'sacrifice' || need?.kind === 'discard')) marks = { ...marks, selectable: new Set(need.options), selected: new Set(picking) };
   else if (!off && preview) marks = { ...marks, paying: new Set(preview.tapped) };
   else if (!off && !intent && d) {
     switch (d.kind) {
@@ -194,7 +201,7 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
     if (off) return;
     if (intent && need?.kind === 'target') { pickTarget(t); return; }
     if (intent && need?.kind === 'tap') { setIntent({ ...intent, tapping: [t] }); return; }
-    if (intent && need?.kind === 'sacrifice') { setIntent({ ...intent, sacrificing: [t] }); return; }
+    if (intent && (need?.kind === 'sacrifice' || need?.kind === 'discard')) { pickCost(t); return; }
     if (!d) return;
     switch (d.kind) {
       case 'attackers': setAtk((a) => { const n = new Set(a); if (n.has(t)) n.delete(t); else n.add(t); return n; }); return;
@@ -257,7 +264,7 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
   // ----- the prompt panel
   const answering: Answering = { chosen, toggleChosen, atk, blocks, armed, split, setSplit, order, picking, onPick };
   const prompt = off || !d ? null
-    : intent && need && actor ? <IntentPrompt {...{ s, actor, intent, need, setIntent, picking, setPicking, pickTarget, modes, setModes, x, setX, preview, plainPayment, send, confirm: toChoice(intent) }} />
+    : intent && need && actor ? <IntentPrompt {...{ s, actor, intent, need, setIntent, picking, setPicking, pickTarget, pickCost, modes, setModes, x, setX, preview, plainPayment, send, confirm: toChoice(intent) }} />
     : <DecisionPrompt s={s} d={d} a={answering} send={send} />;
 
   const orderBand = !off && d?.kind === 'triggerOrder' ? (

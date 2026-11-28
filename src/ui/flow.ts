@@ -5,7 +5,7 @@
  * auto-payment will tap. The engine has the last word: a refused answer goes back to the player.
  */
 import type { TargetSpec } from '../engine/abilities';
-import { sacrificeCandidates, spellAbility, tapCandidates, whyNotCast } from '../engine/engine';
+import { castCost, costChoices, spellAbility, tapCandidates, whyNotCast } from '../engine/engine';
 import { legalTargets } from '../engine/targets';
 import type { Choice, GameState, ObjectId, PlayerId, Target } from '../engine/types';
 
@@ -16,9 +16,10 @@ export interface Intent {
   /** For an activation: which ability. */
   ability?: number;
   modes?: number[];
-  /** Which additional-cost option ("pay {4} or sacrifice …"), and what it sacrifices. */
+  /** Which additional-cost option ("pay {4} or sacrifice …"), and what a cost sacrifices or discards. */
   cost?: number;
   sacrificing?: ObjectId[];
+  discarding?: ObjectId[];
   x?: number;
   targets: Target[][];
   tapping?: ObjectId[];
@@ -27,7 +28,7 @@ export interface Intent {
 export type Need =
   | { kind: 'modes'; options: { text: string; ok: boolean }[]; min: number; max: number }
   | { kind: 'cost'; options: { text: string; ok: boolean }[] }
-  | { kind: 'sacrifice'; options: ObjectId[] }
+  | { kind: 'sacrifice' | 'discard'; options: ObjectId[]; count: number }
   | { kind: 'x' }
   | { kind: 'target'; spec: number; legal: Target[]; count: number; upTo: boolean; text: string }
   | { kind: 'tap'; options: ObjectId[] }
@@ -74,8 +75,14 @@ export function nextNeed(s: GameState, p: PlayerId, i: Intent): Need {
     const count = 'objects' in spec ? spec.count ?? 1 : 1;
     return { kind: 'target', spec: k, legal: legalTargets(s, spec, ctx), count, upTo: 'objects' in spec && !!spec.upTo, text: describeSpec(spec) };
   }
-  const sacrifice = i.kind === 'cast' && i.cost !== undefined ? scriptOf(s, i.object)?.spell?.costOptions?.[i.cost]?.cost.sacrifice : undefined;
-  if (sacrifice && !i.sacrificing) return { kind: 'sacrifice', options: sacrificeCandidates(s, p, sacrifice, i.object) };
+  // Costs that take objects: asked only when there is a real choice.
+  const cost = i.kind === 'cast' ? castCost(s, i.object, i.cost) : scriptOf(s, i.object)?.activated?.[i.ability ?? 0]?.cost;
+  const choices = costChoices(s, p, cost, i.object);
+  for (const kind of ['sacrifice', 'discard'] as const) {
+    const c = choices[kind];
+    const chosen = kind === 'sacrifice' ? i.sacrificing : i.discarding;
+    if (c && c.count > 0 && !chosen && c.options.length > c.count) return { kind, options: c.options, count: c.count };
+  }
   if (i.kind === 'activate' && !i.tapping) {
     const a = scriptOf(s, i.object)?.activated?.[i.ability ?? 0];
     if (a?.cost.tapAnother) return { kind: 'tap', options: tapCandidates(s, p, a) };
@@ -84,8 +91,8 @@ export function nextNeed(s: GameState, p: PlayerId, i: Intent): Need {
 }
 
 export function toChoice(i: Intent): Choice {
-  if (i.kind === 'cast') return { kind: 'cast', object: i.object, targets: i.targets, ...(i.modes ? { modes: i.modes } : {}), ...(i.x !== undefined ? { x: i.x } : {}), ...(i.cost !== undefined ? { cost: i.cost } : {}), ...(i.sacrificing ? { sacrificing: i.sacrificing } : {}) };
-  return { kind: 'activate', object: i.object, ability: i.ability ?? 0, targets: i.targets, ...(i.tapping ? { tapping: i.tapping } : {}) };
+  if (i.kind === 'cast') return { kind: 'cast', object: i.object, targets: i.targets, ...(i.modes ? { modes: i.modes } : {}), ...(i.x !== undefined ? { x: i.x } : {}), ...(i.cost !== undefined ? { cost: i.cost } : {}), ...(i.sacrificing ? { sacrificing: i.sacrificing } : {}), ...(i.discarding ? { discarding: i.discarding } : {}) };
+  return { kind: 'activate', object: i.object, ability: i.ability ?? 0, targets: i.targets, ...(i.tapping ? { tapping: i.tapping } : {}), ...(i.sacrificing ? { sacrificing: i.sacrificing } : {}), ...(i.discarding ? { discarding: i.discarding } : {}) };
 }
 
 /** A drop on a legal target for the first target spec chooses it (PRD, "Dropping on a target targets it"). */

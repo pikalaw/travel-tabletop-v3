@@ -49,6 +49,11 @@ async function playRandomly(page: Page, seed: number, steps: number) {
     if (await vis('keep')) { await page.getByTestId('keep').click(); continue; }
     if (await vis('confirm')) { await page.getByTestId('confirm').click(); if (await vis('cancel')) await page.getByTestId('cancel').click(); continue; }
     if (await vis('accept-order')) { await page.getByTestId('accept-order').click(); continue; }
+    if (await vis('keep-legend')) {
+      if (!(await enabled('keep-legend'))) await page.locator('.field .card.pickable').first().click();
+      await page.getByTestId('keep-legend').click();
+      continue;
+    }
     if (await vis('x-done')) { await page.getByTestId('x-done').click(); continue; }
     if (await any('.prompt .pipbtn')) continue;
     if (await any('[data-testid^=mode-]:enabled')) continue;
@@ -139,8 +144,9 @@ test('a player resigns from the menu, and the other wins', async ({ page }) => {
 });
 
 const BEGINNER_BOX = ['bb-firebending', 'bb-attacking', 'bb-zuko-tutorial', 'bb-waterbending', 'bb-allies', 'bb-spells', 'bb-earthbending', 'bb-counters', 'bb-big-creatures', 'bb-aang-tutorial'];
-const JUMPSTART = ['js-reinforced-1', 'js-earthbending-1', 'js-toph', 'js-at-the-zoo', 'js-earth-kingdom-1', 'js-reinforced-2', 'js-earth-kingdom-2'];
-for (const [seed, packets] of [[11, BEGINNER_BOX], [12, BEGINNER_BOX], [13, JUMPSTART]] as const) {
+const JUMPSTART_EARTH = ['js-reinforced-1', 'js-earthbending-1', 'js-toph', 'js-at-the-zoo', 'js-earth-kingdom-1', 'js-reinforced-2', 'js-earth-kingdom-2'];
+const JUMPSTART_WATER = ['js-katara', 'js-adept-2', 'js-adaptive', 'js-soaring-1', 'js-kyoshi', 'js-earth-rumble-1', 'js-earth-rumble-2'];
+for (const [seed, packets] of [[11, BEGINNER_BOX], [12, BEGINNER_BOX], [13, JUMPSTART_EARTH], [14, JUMPSTART_WATER]] as const) {
   test(`random play through the screen never shows a hand to the wrong player (seed ${seed})`, async ({ page }) => {
     test.setTimeout(240_000);
     const errors: string[] = [];

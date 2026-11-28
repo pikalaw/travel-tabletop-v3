@@ -4,6 +4,7 @@
  */
 import { characteristics, isType } from './characteristics';
 import { battlefield, event } from './state';
+import { finalChapter } from './triggers';
 import { leaveBattlefield } from './zones';
 import type { GameState, PlayerId } from './types';
 import { PLAYERS } from './types';
@@ -27,6 +28,15 @@ export function stateBasedActions(s: GameState): boolean {
   });
   for (const o of dying) event(s, `${characteristics(s, o).name} dies`);
   if (dying.length) { leaveBattlefield(s, dying.map((o) => o.id), 'graveyard', { dies: true }); acted = true; }
+
+  // 714.4: a Saga with as many lore counters as its final chapter, and no chapter ability waiting or on the stack, is sacrificed.
+  const done = battlefield(s).filter((o) => {
+    const last = finalChapter(s, o);
+    if (!last || (o.counters.lore ?? 0) < last) return false;
+    return !s.pendingTriggers.some((t) => t.source === o.id) && !s.zones.stack.some((id) => s.objects[id]!.ability?.source === o.id);
+  });
+  for (const o of done) event(s, `${characteristics(s, o).name} is sacrificed: its story is over`);
+  if (done.length) { leaveBattlefield(s, done.map((o) => o.id), 'graveyard'); acted = true; }
 
   // 704.5m: an Aura attached to nothing (or to something gone) is put into its owner's graveyard.
   const loose = battlefield(s).filter((o) => characteristics(s, o).subtypes.includes('Aura') && (!o.attachedTo || s.objects[o.attachedTo]?.zone !== 'battlefield'));

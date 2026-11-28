@@ -36,9 +36,12 @@ function entered(s: GameState, o: GameObject, opts: EnterOptions): ObjectId {
   if (opts.attachTo) o.attachedTo = opts.attachTo; // an Aura enters attached (303.4f)
   o.tapped = !!opts.tapped || reps.some((r) => 'entersTapped' in r.replace);
   o.controlledSince = s.turn;
+  if (view(s)(o).types.includes('Land')) s.turnLog.landsEntered[o.controller]++;
   // Entering with counters is counters being put on it, so "that many plus one" applies too.
   for (const r of reps) if ('entersWithCounters' in r.replace) addCounters(s, o.id, r.replace.entersWithCounters, r.replace.n);
   for (const [kind, n] of Object.entries(opts.counters ?? {})) addCounters(s, o.id, kind, n);
+  // 714.3a: as a Saga enters, its controller puts a lore counter on it.
+  if (view(s)(o).subtypes.includes('Saga')) addCounters(s, o.id, 'lore', 1, o.controller);
   fire(s, { kind: 'enters', object: o.id });
   return o.id;
 }
@@ -69,8 +72,8 @@ export function leaveBattlefield(s: GameState, ids: ObjectId[], to: 'graveyard' 
     const token = isToken(s, id);
     const earthbent = s.effects.find((e) => e.effect.earthbent && e.affected.includes(id));
     const name = v(o).name;
-    if (Object.keys(o.counters).length) s.lastKnown[id] = { counters: { ...o.counters } };
     const n = move(s, id, zoneOf(o.owner, d));
+    s.lastKnown[id] = { counters: { ...o.counters }, movedTo: n.id };
     if (token) { s.zones[n.zone].splice(s.zones[n.zone].indexOf(n.id), 1); delete s.objects[n.id]; continue; }
     // 701.65: an earthbent land that dies or is exiled comes back, by a triggered ability of its earthbending.
     if (earthbent && (d === 'graveyard' || d === 'exile')) {

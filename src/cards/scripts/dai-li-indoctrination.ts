@@ -10,7 +10,7 @@ export default card({
     modes: { min: 1, max: 1, options: [
       {
         targets: [{ players: 'opponent' }],
-        effects: [{ revealAndDiscard: { target: 0 }, choose: { types: ['Creature', 'Artifact', 'Enchantment', 'Planeswalker', 'Battle'], notTypes: ['Land'] } }],
+        effects: [{ revealAndDiscard: { target: 0 }, discards: { types: ['Creature', 'Artifact', 'Enchantment', 'Planeswalker', 'Battle'], notTypes: ['Land'] } }],
         text: 'Target opponent reveals their hand. You choose a nonland permanent card from it. That player discards that card.',
       },
       { targets: [LAND_YOU_CONTROL], effects: [earthbend(2, 0)], text: 'Earthbend 2.' },

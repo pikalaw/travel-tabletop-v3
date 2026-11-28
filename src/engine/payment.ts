@@ -3,13 +3,14 @@
  * waterbend their artifacts and creatures), the solver's answer for a cost, and paying it. Players
  * never tap lands by hand: the engine pays, and the UI previews what a payment will tap.
  */
-import type { Effect, Filter } from './abilities';
+import type { Effect } from './abilities';
 import { characteristics, isType, summoningSick, view } from './characteristics';
-import { amount, holds, matches, select, type Context } from './evaluate';
+import { amount, holds, matches, type Context } from './evaluate';
 import { parseCost, solvePayment, type ManaSource } from './mana';
 import { activatedOf, controlledBy, event, obj, printed, spellOf } from './state';
 import type { Choice, Color, GameState, ManaSymbol, ObjectId, PlayerId } from './types';
 import { COLORS } from './types';
+import { costReduction } from './costs';
 import { tap } from './zones';
 
 const BASIC_MANA: Record<string, Color> = { Plains: 'W', Island: 'U', Swamp: 'B', Mountain: 'R', Forest: 'G' };
@@ -46,8 +47,8 @@ export function tapForMana(s: GameState, id: ObjectId): { makes: (Color | 'C')[]
     scripted.push(...y.makes);
     n = Math.max(n, y.n);
   }
-  // "Has '{T}: Add one mana of any color'", from another permanent (Great Divide Guide).
-  if (c.anyColorMana) scripted.push(...COLORS);
+  // A granted "{T}: Add …" (Great Divide Guide, Tectonic Split, Princess Yue's Moon).
+  if (c.addsMana) { scripted.push(...c.addsMana.makes); n = Math.max(n, c.addsMana.n ?? 1); }
   const makes = [...new Set([...basic, ...scripted])];
   return makes.length ? { makes, n: Math.max(n, 1) } : null;
 }
@@ -160,19 +161,11 @@ export function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0, opt
   const cost = printedCost.map((m): ManaSymbol => (m.kind === 'x' ? { kind: 'generic', amount: x } : m));
   const spell = spellOf(s, id);
   const extra = spell?.additionalCost;
-  let reduced = cost;
-  if (spell?.reduceBy !== undefined) {
-    // 601.2f: reductions take off generic mana only.
-    let off = amount(s, view(s), spell.reduceBy, { controller: p, source: id });
-    reduced = cost.map((m) => { if (m.kind !== 'generic' || off <= 0) return m; const take = Math.min(off, m.amount); off -= take; return { kind: 'generic', amount: m.amount - take }; });
-  }
+  // 601.2f: reductions, the spell's own and static abilities', take off generic mana only.
+  let off = (spell?.reduceBy !== undefined ? amount(s, view(s), spell.reduceBy, { controller: p, source: id }) : 0) + costReduction(s, p, id);
+  const reduced = cost.map((m): ManaSymbol => { if (m.kind !== 'generic' || off <= 0) return m; const take = Math.min(off, m.amount); off -= take; return { kind: 'generic', amount: m.amount - take }; });
   const extraMana = [extra?.mana, option !== undefined ? spell?.costOptions?.[option]?.cost.mana : undefined].filter((m): m is string => !!m);
   return costToPay(s, p, [...reduced, ...extraMana.flatMap(parseCost)], extra?.waterbend ?? 0);
-}
-
-/** Permanents `p` could sacrifice for a "sacrifice an artifact or creature" cost. */
-export function sacrificeCandidates(s: GameState, p: PlayerId, f: Filter, source: ObjectId): ObjectId[] {
-  return select(s, view(s), { ...f, controller: 'you' }, { controller: p, source }).map((o) => o.id);
 }
 
 /** Mana with a rider spent on this spell (Animal Attendant): the counters its permanent enters with. */
