@@ -3,6 +3,7 @@
  * battlefield; the centre band (turn line, or the stack row); then the same for the player the board
  * faces, and their hand. Components only lay out the view model; taps go to the game screen.
  */
+import { libraryTopSeen } from '../engine/engine';
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { GameState, ObjectId, PlayerId, Target } from '../engine/types';
@@ -221,7 +222,9 @@ function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Ma
     if (d && d.id === id && !d.lifted && Math.abs(e.clientX - d.x) < 8) h.onCard(id);
   };
   const cancel = () => { if (drag.current?.lifted) { setGhost(null); onLift(false); } drag.current = null; };
-  const ids = s.zones[`${p}.hand`];
+  // "You may look at the top card of your library any time" (Hakoda): it sits at the end of the hand, marked, only while the hand shows.
+  const top = libraryTopSeen(s, p);
+  const ids = [...s.zones[`${p}.hand`], ...(top ? [top] : [])];
   // Cards overlap just enough to fit the width (80 px each at this height), keeping at least 34 px of each in view.
   const overlap = ids.length > 1 ? Math.min(46, Math.max(4, (ids.length * 80 - (window.innerWidth - 20)) / (ids.length - 1))) : 0;
   return (
@@ -233,6 +236,7 @@ function Hand({ s, p, marks, h, onLift }: { s: GameState; p: PlayerId; marks: Ma
           <div key={id} class={cls} style={{ marginLeft: `${-overlap}px` }} data-card={id} data-testid={`handcard-${s.setup.cards[s.objects[id]!.card]!.name}`} onPointerDown={down(id)} onClick={tap(id)}>
             <img src={imageOf(s, id)} alt={s.setup.cards[s.objects[id]!.card]!.name} draggable={false} />
             {marks.fresh.has(id) && <span class="new-tab">NEW</span>}
+            {id === top && <span class="new-tab top-tab" data-testid="library-top">TOP</span>}
           </div>
         );
       })}

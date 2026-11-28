@@ -155,6 +155,7 @@ export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ct
   if ('manaValueOf' in a) return objects(s, view, a.manaValueOf, ctx).reduce((n, o) => n + manaValue(s.setup.cards[o.card]!.manaCost), 0);
   if ('times' in a) return amount(s, view, a.times, ctx, x) * a.by;
   if ('thisTurn' in a) return a.thisTurn === 'youSacrificed' ? s.turnLog.sacrificed[ctx.controller] : (['p1', 'p2'] as const).filter((p) => s.turnLog.discarded[p] > 0).length;
+  if ('when' in a) return holds(s, view, a.when, ctx) ? a.n : 0;
   if ('half' in a) return Math.ceil(amount(s, view, a.half, ctx, x) / 2);
   return amount(s, view, a.plus, ctx, x) + a.and;
 }
@@ -162,6 +163,7 @@ export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ct
 export function holds(s: GameState, view: View, c: Condition, ctx: Context): boolean {
   if (c === 'yourTurn') return s.active === ctx.controller;
   if (c === 'firstTapThisTurn') return !!ctx.eventObject && s.turnLog.tapped[ctx.eventObject] === 1;
+  if (c === 'sourceAttackedThisTurn') return s.turnLog.attackers.includes(ctx.source);
   if (c === 'duringCombat') return ['beginCombat', 'attackers', 'blockers', 'firstStrikeDamage', 'damage', 'endCombat'].includes(s.step);
   if ('not' in c) return !holds(s, view, c.not, ctx);
   if ('any' in c) return c.any.some((x) => holds(s, view, x, ctx));

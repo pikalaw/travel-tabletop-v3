@@ -37,6 +37,8 @@ export function checkAttack(s: GameState, attackers: ObjectId[]): string | null 
   for (const id of attackers) {
     const o = s.objects[id];
     if (!o || !canAttack(s, o)) return `${o ? name(s, o) : id} can't attack`;
+    // Pipsqueak: "can't attack alone unless he has a +1/+1 counter on him".
+    if (attackers.length === 1 && hasKeyword(s, o, "can't attack alone unless it has a +1/+1 counter") && !(o.counters['+1/+1']! > 0)) return `${name(s, o)} can't attack alone`;
   }
   return null;
 }
@@ -50,6 +52,7 @@ export function declareAttackers(s: GameState, attackers: ObjectId[]): void {
   const who = s.setup.players[s.active].name;
   event(s, attackers.length ? `${who} attacks with ${attackers.map((id) => name(s, obj(s, id))).join(', ')}` : `${who} doesn't attack`);
   if (attackers.length) s.turnLog.attacked[s.active] = true;
+  s.turnLog.attackers.push(...attackers);
   for (const id of attackers) fire(s, { kind: 'attacks', object: id }); // 508.3a
 }
 

@@ -30,8 +30,33 @@ export function costReduction(s: GameState, p: PlayerId, spell: ObjectId): numbe
   const zone = o.zone.includes('.') ? o.zone.split('.')[1] as 'hand' : 'stack';
   return staticsInForce(s, p).reduce((n, { effect, source }) => {
     const r = effect.reducesCost;
-    return r && matches(s, view(s), o, { ...r.spells, zone }, { controller: p, source }) ? n + r.by : n;
+    const ctx = { controller: p, source };
+    if (!r || !matches(s, view(s), o, { ...r.spells, zone }, ctx)) return n;
+    if (r.firstEachTurn && s.activatedThisTurn[`first:${source}`]) return n;
+    return n + amount(s, view(s), r.by, ctx);
   }, 0);
+}
+
+/** A spell was cast: "the first … spell you cast each turn" reductions it matched are used up. */
+export function usedFirstReductions(s: GameState, p: PlayerId, spell: ObjectId): void {
+  const o = obj(s, spell);
+  for (const { effect, source } of staticsInForce(s, p)) {
+    const r = effect.reducesCost;
+    if (r?.firstEachTurn && matches(s, view(s), o, { ...r.spells, zone: 'stack' }, { controller: p, source })) s.activatedThisTurn[`first:${source}`] = 1;
+  }
+}
+
+/** The top card of `p`'s library, if a static ability lets them look at it any time (Hakoda); else null. */
+export function libraryTopSeen(s: GameState, p: PlayerId): ObjectId | null {
+  const lib = s.zones[zoneOf(p, 'library')];
+  return lib.length && staticsInForce(s, p).some(({ effect }) => effect.revealsLibraryTop) ? lib[lib.length - 1]! : null;
+}
+
+/** The top card of `p`'s library, if a static ability lets them cast it (Hakoda: "Ally spells"). */
+export function castableFromLibraryTop(s: GameState, p: PlayerId, id: ObjectId): boolean {
+  const lib = s.zones[zoneOf(p, 'library')];
+  if (lib[lib.length - 1] !== id) return false;
+  return staticsInForce(s, p).some(({ effect, source }) => !!effect.castFromLibraryTop && matches(s, view(s), obj(s, id), { ...effect.castFromLibraryTop, zone: 'library' }, { controller: p, source }));
 }
 
 /** "You may cast the first creature spell you cast each turn as though it had flash" (The Blue Spirit). */

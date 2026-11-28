@@ -88,6 +88,8 @@ export type Amount =
   | { creatureTypesOf: ObjectRef; max?: number }
   /** Half, rounded up ("half the lands you control, rounded up"). */
   | { half: Amount }
+  /** `n` when the condition holds, else 0 ("costs {2} less if a creature left the battlefield …"). */
+  | { when: Condition; n: number }
   /** What happened this turn: players who discarded a card, permanents the controller sacrificed. */
   | { thisTurn: 'playersWhoDiscarded' | 'youSacrificed' }
   | { times: Amount; by: number }
@@ -102,6 +104,8 @@ export type Condition =
   | { target: number; is: Filter }
   /** What happened this turn (raid, "if an opponent lost life this turn"). */
   | { thisTurn: 'youAttacked' | 'opponentLostLife' | 'aLandEnteredForYou' | 'aCreatureLeftForYou' }
+  /** The source attacked this turn ("if this creature didn't attack this turn"). */
+  | 'sourceAttackedThisTurn'
   /** One amount compared with another ("if its power is less than or equal to the sacrificed creature's power"). */
   | { compare: Amount; op: '<=' | '>=' | '=='; with: Amount }
   /** "If you've drawn two or more cards this turn". */
@@ -155,6 +159,8 @@ export interface Cost {
   sacrificeCount?: Amount;
   /** "Discard a card": the payer chooses which. */
   discard?: number;
+  /** "{T}" of the creature an Equipment is attached to (Trusty Boomerang's granted ability). */
+  tapAttached?: boolean;
   /** "Remove a counter from The Duke": one counter of any kind from the source. */
   removeCounter?: boolean;
   /** Crew N (702.122): tap untapped creatures you control with total power N or more. */
@@ -274,10 +280,17 @@ export interface Continuous {
   exileIfWouldDie?: boolean;
   /** A granted "{T}: Add …" mana ability (Great Divide Guide, Tectonic Split, Princess Yue's Moon): the kinds, and how many. */
   addsMana?: { makes: (Color | 'C')[]; n?: number };
-  /** "Lesson spells you cast cost {1} less" (612, 601.2f): spells matching the filter, from wherever they're cast. */
-  reducesCost?: { spells: Filter; by: number };
+  /**
+   * "Lesson spells you cast cost {1} less" (612, 601.2f): spells matching the filter, from wherever
+   * they're cast; `firstEachTurn`: only the first such spell each turn ("the first … you cast").
+   */
+  reducesCost?: { spells: Filter; by: Amount; firstEachTurn?: boolean };
   /** Keywords lost ("lose hexproof and indestructible"), after those added (layer 6). */
   removeKeywords?: string[];
+  /** "You may look at the top card of your library any time" (Hakoda): shown beside its owner's hand. */
+  revealsLibraryTop?: boolean;
+  /** "You may cast Ally spells from the top of your library" (Hakoda): spells matching the filter. */
+  castFromLibraryTop?: Filter;
   /** "You may cast the first creature spell you cast each turn as though it had flash". */
   firstCreatureFlash?: boolean;
   /** Earthbent: when this land dies or is exiled, it returns to the battlefield tapped (701.65). */

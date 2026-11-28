@@ -152,7 +152,8 @@ const JUMPSTART_WATER = ['js-katara', 'js-adept-2', 'js-adaptive', 'js-soaring-1
 const JUMPSTART_LESSONS = ['js-lessons-1', 'js-spirit', 'js-wise-1', 'js-librarian', 'js-learning-2', 'js-soaring-2', 'js-adept-1'];
 const JUMPSTART_FOOD = ['js-cabbages', 'js-bumi', 'js-siege-engines', 'js-ozai', 'js-relentless-1', 'js-bad-advice', 'js-learning-1'];
 const JUMPSTART_HUNT = ['js-azula', 'js-bounty-hunter-1', 'js-hunting-1', 'js-alliance-1', 'js-hei-bai-2', 'js-bounty-hunter-2', 'js-alliance-2'];
-for (const [seed, packets] of [[11, BEGINNER_BOX], [12, BEGINNER_BOX], [13, JUMPSTART_EARTH], [14, JUMPSTART_WATER], [15, JUMPSTART_LESSONS], [16, JUMPSTART_FOOD], [17, JUMPSTART_HUNT]] as const) {
+const JUMPSTART_AIR = ['js-airbending', 'js-swordmaster', 'js-warriors', 'js-freedom-fighters', 'js-insurgent-1', 'js-gliding-2', 'js-hei-bai-1'];
+for (const [seed, packets] of [[11, BEGINNER_BOX], [12, BEGINNER_BOX], [13, JUMPSTART_EARTH], [14, JUMPSTART_WATER], [15, JUMPSTART_LESSONS], [16, JUMPSTART_FOOD], [17, JUMPSTART_HUNT], [18, JUMPSTART_AIR]] as const) {
   test(`random play through the screen never shows a hand to the wrong player (seed ${seed})`, async ({ page }) => {
     test.setTimeout(240_000);
     const errors: string[] = [];

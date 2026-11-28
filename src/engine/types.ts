@@ -342,6 +342,8 @@ export interface GameState {
     landsEntered: Record<PlayerId, number>; creatureSpells: Record<PlayerId, number>;
     /** Cards each player discarded, permanents each sacrificed, and creatures that left the battlefield under each one's control. */
     discarded: Record<PlayerId, number>; sacrificed: Record<PlayerId, number>; creaturesLeft: Record<PlayerId, number>;
+    /** Creatures that attacked this turn. */
+    attackers: ObjectId[];
   };
   result: GameResult | null;
   /** Public events, oldest first. */

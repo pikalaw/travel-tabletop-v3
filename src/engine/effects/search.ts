@@ -4,15 +4,18 @@ import { move, shuffleLibrary, zoneOf } from '../state';
 import { putOntoBattlefield } from '../zones';
 import type { Handler } from './kit';
 
-/** Search your library for up to `n` cards matching the filter, put them somewhere, then shuffle (701.23). */
-export interface Search { search: Filter; n?: Amount; to: 'hand' | 'battlefield'; tapped?: boolean }
+/** Search your library (and, with `graveyardToo`, your graveyard) for up to `n` cards matching the filter, put them somewhere, then shuffle (701.23). */
+export interface Search { search: Filter; n?: Amount; to: 'hand' | 'battlefield'; tapped?: boolean; graveyardToo?: boolean }
 
 export const search: Handler<Search> = (e, r) => {
   const { s, v, ctx } = r;
   const p = ctx.controller;
   const picked = r.answer('pick');
   if (!picked) {
-    const options = s.zones[zoneOf(p, 'library')].filter((id) => matches(s, v, s.objects[id]!, { ...e.search, zone: 'library' }, ctx));
+    const options = [
+      ...s.zones[zoneOf(p, 'library')].filter((id) => matches(s, v, s.objects[id]!, { ...e.search, zone: 'library' }, ctx)),
+      ...(e.graveyardToo ? s.zones[zoneOf(p, 'graveyard')].filter((id) => matches(s, v, s.objects[id]!, { ...e.search, zone: 'graveyard' }, ctx)) : []),
+    ];
     const max = e.n === undefined ? 1 : r.n(e.n);
     return r.ask({ kind: 'pick', player: p, from: options, options, min: 0, max, text: options.length ? `Search your library: take up to ${max === 1 ? 'one' : max}` : 'Search your library: nothing matches', done: 'Take', none: 'Find nothing' });
   }

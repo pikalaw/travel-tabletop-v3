@@ -10,7 +10,7 @@ import { attackers, canAttack, canBlock, checkAttack, checkBlocks, checkSplit, d
 import { runEffects } from './effects';
 import { holds, matches, type Context } from './evaluate';
 import { parseCost } from './mana';
-import { castCost, costChoiceMissing, costChoiceProblem, costChoices, firstCreatureFlash, payCostChoices } from './costs';
+import { castableFromLibraryTop, castCost, costChoiceMissing, costChoiceProblem, costChoices, firstCreatureFlash, payCostChoices, usedFirstReductions } from './costs';
 import { costToPay, pay, riderCounters, spellPayment, waterbendOf } from './payment';
 import { seedRng } from './rng';
 import { stateBasedActions } from './sba';
@@ -26,7 +26,7 @@ const STARTING_LIFE = 20;
 const PERMANENT_TYPES = ['Creature', 'Artifact', 'Enchantment', 'Planeswalker', 'Battle'];
 
 const playerName = (s: GameState, p: PlayerId) => s.setup.players[p].name;
-const freshTurnLog = (): GameState['turnLog'] => ({ attacked: { p1: false, p2: false }, lifeLost: { p1: 0, p2: 0 }, drawn: { p1: 0, p2: 0 }, tapped: {}, landsEntered: { p1: 0, p2: 0 }, creatureSpells: { p1: 0, p2: 0 }, discarded: { p1: 0, p2: 0 }, sacrificed: { p1: 0, p2: 0 }, creaturesLeft: { p1: 0, p2: 0 } });
+const freshTurnLog = (): GameState['turnLog'] => ({ attacked: { p1: false, p2: false }, lifeLost: { p1: 0, p2: 0 }, drawn: { p1: 0, p2: 0 }, tapped: {}, landsEntered: { p1: 0, p2: 0 }, creatureSpells: { p1: 0, p2: 0 }, discarded: { p1: 0, p2: 0 }, sacrificed: { p1: 0, p2: 0 }, creaturesLeft: { p1: 0, p2: 0 }, attackers: [] });
 const nameOf = (s: GameState, id: ObjectId) => characteristics(s, obj(s, id)).name;
 const ctxFor = (p: PlayerId, source: ObjectId): Context => ({ controller: p, source });
 const hand = (s: GameState, p: PlayerId) => s.zones[zoneOf(p, 'hand')];
@@ -139,7 +139,8 @@ function checkModes(s: GameState, id: ObjectId, modes?: number[]): string | null
 export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Target[][], modes?: number[], x = 0, option?: number, sacrificing?: ObjectId[], discarding?: ObjectId[]): string | null {
   const o = s.objects[id];
   const fromExile = !!o && ((o.zone === zoneOf(p, 'exile') && o.owner === p && (!!o.airbended || playableFromExile(s, p, o))) || castableFromExile(s, p, o));
-  if (!o || (o.zone !== zoneOf(p, 'hand') && !fromExile)) return 'Not in your hand';
+  const fromLibrary = !!o && castableFromLibraryTop(s, p, id);
+  if (!o || (o.zone !== zoneOf(p, 'hand') && !fromExile && !fromLibrary)) return 'Not in your hand';
   if (isType(s, o, 'Land')) return 'Lands are played, not cast';
   const spellDef = spellOf(s, id);
   const instantSpeed = isType(s, o, 'Instant') || characteristics(s, o).keywords.includes('flash')
@@ -198,6 +199,12 @@ export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: n
   if (a.cost.tap && isType(s, o, 'Creature') && summoningSick(s, o)) return 'It came under your control this turn';
   if (a.cost.payLife && s.players[p].life < a.cost.payLife) return 'Not enough life';
   if (a.cost.removeCounter && !Object.values(o.counters).some((n) => n > 0)) return 'It has no counters to remove';
+  if (a.cost.tapAttached) {
+    const to = o.attachedTo ? s.objects[o.attachedTo] : undefined;
+    if (!to) return "It isn't attached to a creature";
+    if (to.tapped) return 'The equipped creature is tapped';
+    if (summoningSick(s, to)) return 'The equipped creature came under your control this turn';
+  }
   if (a.cost.tapAnother) {
     const can = tapCandidates(s, p, a);
     if (!can.length) return 'No untapped creature to tap';
@@ -237,7 +244,8 @@ export function legalActions(s: GameState): Choice[] {
         if (!whyNotPlay(s, p, id)) out.push({ kind: 'play', object: id });
         if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
       }
-      for (const id of [...s.zones['p1.exile'], ...s.zones['p2.exile']]) {
+      const top = s.zones[zoneOf(p, 'library')].slice(-1);
+      for (const id of [...s.zones['p1.exile'], ...s.zones['p2.exile'], ...top]) {
         if (!whyNotPlay(s, p, id)) out.push({ kind: 'play', object: id });
         if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
       }
@@ -531,6 +539,7 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       const extra = riderCounters(s, sources, spell.id);
       if (Object.keys(extra).length) spell.entersWithCounters = extra;
       s.passes = 0;
+      usedFirstReductions(s, p, spell.id);
       fire(s, { kind: 'cast', object: spell.id, player: p }); // 601.2i
       targeted(s, spell.id);
       return null;
@@ -574,6 +583,7 @@ function activate(s: GameState, p: PlayerId, id: ObjectId, index: number, target
     pay(s, p, payment.sources);
   }
   if (a.cost.tap) tap(s, id);
+  if (a.cost.tapAttached && o.attachedTo) tap(s, o.attachedTo);
   if (a.cost.payLife) s.players[p].life -= a.cost.payLife;
   if (a.cost.removeCounter) {
     const kind = Object.keys(o.counters).sort((x, y) => Number(y === '+1/+1') - Number(x === '+1/+1')).find((k) => o.counters[k]! > 0)!;
@@ -835,5 +845,5 @@ function skip(s: GameState): void {
   s.priority = null;
 }
 
-export { castCost, costChoices } from './costs';
+export { castableFromLibraryTop, castCost, costChoices, libraryTopSeen } from './costs';
 export { manaSources, paymentPreview, tapForMana } from './payment';
