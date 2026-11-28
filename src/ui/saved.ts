@@ -9,6 +9,8 @@ import { startSession, type Session } from '../host/session';
 import { BUILD_ID } from '../version';
 
 export interface GameSpec {
+  /** Names the game in the URL (#game=<id>), so a reload comes back to it. */
+  id: string;
   names: Record<PlayerId, string>;
   packets: Record<PlayerId, string[]>;
   first: PlayerId;
@@ -40,6 +42,7 @@ export function load(): { spec: GameSpec; session: Session } | null {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const saved = JSON.parse(raw) as Saved;
+    saved.spec.id ??= String(saved.spec.seed); // saved before games had ids
     const game = restore({ setup: setupOf(saved.spec), seed: saved.spec.seed, choices: saved.choices });
     // Announcements saved by builds before they remembered the stack are dropped.
     const ahead = Object.fromEntries(Object.entries(saved.ahead ?? {}).filter(([, a]) => Array.isArray(a?.stack)));
@@ -60,4 +63,17 @@ export function lastSetup(): Partial<Pick<GameSpec, 'names' | 'packets'>> {
 
 export function rememberSetup(spec: Pick<GameSpec, 'names' | 'packets'>): void {
   try { localStorage.setItem(SETUP_KEY, JSON.stringify({ names: spec.names, packets: spec.packets })); } catch { /* not remembered */ }
+}
+
+/** A fresh game id, short enough for the address bar. */
+export const newGameId = () => crypto.getRandomValues(new Uint32Array(2)).reduce((a, n) => a + n.toString(36), '').slice(0, 10);
+
+/** The game id in the address (#game=<id>), if any. */
+export const gameInUrl = (): string | null => new URLSearchParams(location.hash.slice(1)).get('game');
+
+/** Puts the game in the address (a new history entry, so Back goes home), or takes it out. */
+export function setGameInUrl(id: string | null): void {
+  const base = location.pathname + location.search;
+  if (id && gameInUrl() !== id) history.pushState(null, '', `${base}#game=${id}`);
+  else if (!id && gameInUrl()) history.pushState(null, '', base);
 }

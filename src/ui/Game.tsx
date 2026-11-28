@@ -85,12 +85,20 @@ const UndoIcon = () => (
 /** Words for a decision Undo would take back: "Undo Claire's block". */
 const UNDO_WORDS: Partial<Record<Choice['kind'], string>> = { cast: 'cast', play: 'land', activate: 'ability', attack: 'attack', block: 'block', pass: 'pass', keep: 'keep', mulligan: 'mulligan', targets: 'targets', order: 'order', discard: 'discard' };
 
-/** How long each step of playback shows. */
-const BEAT_MS = 1100;
+/** How long each step shows when playback runs by itself (»). */
+const BEAT_MS = 1500;
 
-function BeatBanner({ s, beat, n, of }: { s: GameState; beat: Beat; n: number; of: number }) {
+/** Playback controls: › the next step, » the rest by itself, ✕ stop. */
+interface Controls { next: () => void; auto: () => void; end: () => void; auto_: boolean; last: boolean }
+
+function BeatBanner({ s, beat, n, of, c }: { s: GameState; beat: Beat; n: number; of: number; c: Controls }) {
   return (
     <div class={`beat ${beat.controller ?? ''}`} data-testid="beat">
+      <span class="beat-controls">
+        {!c.last && <button class="btn" onClick={c.next} aria-label="Next step" data-tip="Show the next step." data-testid="beat-next">›</button>}
+        {!c.last && !c.auto_ && <button class="btn" onClick={c.auto} aria-label="Play the rest" data-tip="Play the rest, a step every second and a half." data-testid="beat-auto">»</button>}
+        <button class="btn" onClick={c.end} aria-label="Done" data-tip="Stop the playback and show the board as it is now. Your next move stops it too." data-testid="beat-end">✕</button>
+      </span>
       {beat.image ? <img src={beat.image} alt="" /> : <span class="beat-icon">⚔</span>}
       <span class="beat-text">
         <b class={beat.controller ? `by ${beat.controller}` : ''}>{beat.title}</b>
@@ -144,20 +152,27 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
 
   const states = session.game.states;
   const seen = useRef(states.length);
-  const [play, setPlay] = useState<{ beats: Beat[]; k: number } | null>(null);
+  // Playback starts paused on its first step: › steps, » runs the rest, ✕ or the player's next move ends it.
+  const [play, setPlay] = useState<{ beats: Beat[]; k: number; auto: boolean } | null>(null);
   useEffect(() => {
     const before = seen.current;
     seen.current = states.length;
     if (states.length <= before) { setPlay(null); return; } // undo, or nothing new
     const bs = beats(states, before - 1, states.length - 1);
-    setPlay(bs.length ? { beats: bs, k: 0 } : null);
+    setPlay(bs.length ? { beats: bs, k: 0, auto: false } : null);
   }, [states.length]);
   useEffect(() => {
-    if (!play) return undefined;
+    if (!play?.auto) return undefined;
     const t = setTimeout(() => setPlay((p) => (p && p.k + 1 < p.beats.length ? { ...p, k: p.k + 1 } : null)), BEAT_MS);
     return () => clearTimeout(t);
   }, [play]);
   const beat = play?.beats[play.k];
+  const controls: Controls = {
+    next: () => setPlay((p) => (p && p.k + 1 < p.beats.length ? { ...p, k: p.k + 1 } : p)),
+    auto: () => setPlay((p) => (p && p.k + 1 < p.beats.length ? { ...p, k: p.k + 1, auto: true } : p)),
+    end: () => setPlay(null),
+    auto_: !!play?.auto, last: !!play && play.k + 1 >= play.beats.length,
+  };
 
   useEffect(() => {
     setAtk(new Set()); setBlocks(new Map()); setArmed(null); setChosen([]); setPicking([]);
@@ -168,6 +183,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t); } return undefined; }, [toast]);
 
   const send = (c: Choice, opts: Parameters<typeof choose>[2] = {}) => {
+    setPlay(null); // the player's move ends any playback
     const next = choose(session, c, opts);
     if ('refused' in next) { setToast(next.refused); return false; }
     setIntent(null); setPicking([]); setViewing(null);
@@ -286,6 +302,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   // ----- Look: the acting player takes the device; the log marks what happened since they last acted
   function takeLook() {
     if (!actor) return;
+    setPlay(null);
     const g = session.game;
     let i = g.record.choices.length - 1;
     while (i >= 0 && (g.record.choices[i]!.auto || g.record.choices[i]!.player !== actor)) i--;
@@ -295,7 +312,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
 
   // ----- undo, with confirmation when it takes back the other player's decision
   const lastManual = [...session.game.record.choices].reverse().find((c) => !c.auto);
-  const doUndo = () => { setIntent(null); setMenu(null); onChange(undoLast(session)); };
+  const doUndo = () => { setPlay(null); setIntent(null); setMenu(null); onChange(undoLast(session)); };
   const askUndo = () => { if (lastManual && lastManual.player !== me) setMenu('undo'); else doUndo(); };
   // Undo that would take back the other player's decision says so, in their colour.
   const undoOther = lastManual && d && lastManual.player !== d.player ? lastManual : null;
@@ -548,8 +565,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
 
   return (
     <div class="game" data-facing={bottom} ref={root}>
-      <Board s={beat ? states[beat.at]! : s} ahead={session.game.ahead ?? {}} bottom={bottom} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(beat ? { band: <BeatBanner s={s} beat={beat} n={play!.k + 1} of={play!.beats.length} /> } : orderBand ? { band: orderBand } : {})} />
-      {beat && <div class="skip" data-testid="playback" onClick={() => setPlay(null)}><span>Tap to skip</span></div>}
+      <Board s={beat ? states[beat.at]! : s} ahead={session.game.ahead ?? {}} bottom={bottom} handShown={shown} handFolded={folded} marks={marks} h={handlers} {...(beat ? { band: <BeatBanner s={s} beat={beat} n={play!.k + 1} of={play!.beats.length} c={controls} /> } : orderBand ? { band: orderBand } : {})} />
       {prompt}
       {footer}
       {toast && <div class="toast" data-testid="toast" onClick={() => setToast(null)}>{toast}</div>}

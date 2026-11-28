@@ -37,7 +37,7 @@ async function playRandomly(page: Page, seed: number, steps: number) {
   let stuck = 0;
   for (let i = 0; i < steps; i++) {
     if (await vis('home')) return;
-    if (await vis('playback')) { await page.getByTestId('playback').click(); continue; } // tap skips the playback
+    if (await vis('beat-end')) { await page.getByTestId('beat-end').click(); continue; } // end the playback
     if (await vis('handoff')) {
       await expect(page.locator('.hand:not(.folded)'), 'no hand shows during a hand-off').toHaveCount(0);
       await expect(page.locator('.prompt'), 'no prompt shows during a hand-off').toHaveCount(0);
@@ -101,7 +101,7 @@ test('a hand-off shows the public board, and Look shows only the acting hand', a
   await expect(page.locator('.hand:not(.folded)')).toHaveCount(0);
 });
 
-test('a land is played and a game resumes after a reload, blinded', async ({ page }) => {
+test('a land is played; a reload returns to the game, blinded; Back goes home', async ({ page }) => {
   await newGame(page, 7, ['bb-firebending', 'bb-attacking', 'bb-zuko-tutorial'], ['bb-waterbending', 'bb-allies', 'bb-spells']);
   await page.getByTestId('look').click(); await page.getByTestId('keep').click();
   await page.getByTestId('look').click(); await page.getByTestId('keep').click();
@@ -109,10 +109,19 @@ test('a land is played and a game resumes after a reload, blinded', async ({ pag
   await page.getByTestId('handcard-Mountain').first().click();
   await page.getByTestId('action-play').click();
   await expect(page.getByTestId('lands-p1')).toContainText('Mountain');
+  // The address names the game: a reload comes straight back to it, blinded.
+  expect(page.url()).toMatch(/#game=\w+$/);
   await page.reload();
-  await page.getByTestId('resume').click();
   await expect(page.getByTestId('handoff')).toBeVisible();
   await expect(page.getByTestId('lands-p1')).toContainText('Mountain');
+  // Back goes home, where Resume returns to it; an address naming a game not saved here says so.
+  await page.goBack();
+  await expect(page.getByTestId('resume')).toBeVisible();
+  await page.getByTestId('resume').click();
+  await expect(page.getByTestId('handoff')).toBeVisible();
+  await page.goto('./#game=nosuchgame');
+  await page.reload();
+  await expect(page.getByTestId('missing-game')).toBeVisible();
 });
 
 test('a player resigns from the menu, and the other wins', async ({ page }) => {
@@ -159,7 +168,7 @@ test('a cast paid with lands goes straight on the stack, and Undo on the hand-of
   let name: string | null = null;
   for (let i = 0; i < 120 && !name; i++) {
     await page.waitForTimeout(50); // let the view open or close
-    if (await vis('playback')) { await page.getByTestId('playback').click(); continue; }
+    if (await vis('beat-end')) { await page.getByTestId('beat-end').click(); continue; }
     if (await vis('keep')) { await page.getByTestId('keep').click(); continue; }
     if (await page.locator('.prompt .pipbtn').count()) { await page.locator('.prompt .pipbtn').first().click(); continue; }
     if (await vis('handoff')) {

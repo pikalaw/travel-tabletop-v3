@@ -9,7 +9,7 @@ import type { Packet } from '../cards/types';
 import { nextInt, seedRng } from '../engine/rng';
 import type { PlayerId } from '../engine/types';
 import { other } from '../engine/types';
-import { lastSetup, rememberSetup, type GameSpec } from './saved';
+import { lastSetup, newGameId, rememberSetup, type GameSpec } from './saved';
 
 const COLOR_ORDER = ['W', 'U', 'B', 'R', 'G'];
 
@@ -82,7 +82,7 @@ export function Setup({ onStart, onBack }: { onStart: (spec: GameSpec) => void; 
   };
 
   if (flip) {
-    const start = (first: PlayerId) => onStart({ names, packets, first, seed: flip.seed });
+    const start = (first: PlayerId) => onStart({ id: newGameId(), names, packets, first, seed: flip.seed });
     return (
       <main class="setup flip">
         <h2>{names[flip.winner]} wins the coin flip</h2>
