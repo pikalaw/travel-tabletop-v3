@@ -12,20 +12,20 @@ describe('Beginner Box, batch 4', () => {
   cardTest('Beetle-Headed Merchants', () => {
     let { s, ids } = board({ p1: ['Beetle-Headed Merchants', 'Capital Guard'] });
     s = passBoth(act(toAttack(s), { kind: 'attack', attackers: [ids.p1[0]!] }));
-    expect(s.decision).toMatchObject({ kind: 'optionalCost', pay: 'sacrifice', options: [ids.p1[1]] });
+    expect(s.decision).toMatchObject({ kind: 'pick', done: 'Sacrifice', orNone: true, options: [ids.p1[1]] });
     const hand = s.zones['p1.hand'].length;
-    const yes = settle(act(s, { kind: 'optionalCost', objects: [ids.p1[1]!] }));
+    const yes = settle(act(s, { kind: 'pick', cards: [ids.p1[1]!] }));
     expect(yes.zones['p1.hand']).toHaveLength(hand + 1);
     expect(chars(yes, ids.p1[0]!).power).toBe(6);
-    const no = settle(act(s, { kind: 'optionalCost', objects: [] }));
+    const no = settle(act(s, { kind: 'pick', cards: [] }));
     expect(no.zones['p1.hand']).toHaveLength(hand);
   });
 
   cardTest('Yuyan Archers', () => {
     const { s, ids } = board({ p1: lands(2), hand1: ['Yuyan Archers', 'Capital Guard'] });
     let after = passBoth(passBoth(act(s, { kind: 'cast', object: ids.hand1[0]! })));
-    expect(after.decision).toMatchObject({ kind: 'optionalCost', pay: 'discard' });
-    after = settle(act(after, { kind: 'optionalCost', objects: [ids.hand1[1]!] }));
+    expect(after.decision).toMatchObject({ kind: 'pick', done: 'Discard', orNone: true });
+    after = settle(act(after, { kind: 'pick', cards: [ids.hand1[1]!] }));
     expect(after.zones['p1.graveyard']).toHaveLength(1);
   });
 
@@ -33,7 +33,7 @@ describe('Beginner Box, batch 4', () => {
     const { s, ids } = board({ p1: lands(2), hand1: ['Abandon Attachments', 'Capital Guard'] });
     const hand = s.zones['p1.hand'].length;
     let after = passBoth(act(s, { kind: 'cast', object: ids.hand1[0]! }));
-    after = settle(act(after, { kind: 'optionalCost', objects: [ids.hand1[1]!] }));
+    after = settle(act(after, { kind: 'pick', cards: [ids.hand1[1]!] }));
     expect(after.zones['p1.hand']).toHaveLength(hand - 2 + 2);
   });
 
@@ -101,8 +101,8 @@ describe('Beginner Box, batch 4', () => {
   cardTest("Ozai's Cruelty", () => {
     const { s, ids } = board({ p1: lands(3, 'Swamp'), hand1: ["Ozai's Cruelty"] });
     let after = passBoth(act(s, { kind: 'cast', object: ids.hand1[0]!, targets: [['p2']] }));
-    expect(after.decision).toMatchObject({ kind: 'discardEffect', player: 'p2', count: 2 });
-    after = settle(act(after, { kind: 'discard', cards: after.zones['p2.hand'].slice(0, 2) }));
+    expect(after.decision).toMatchObject({ kind: 'pick', player: 'p2', min: 2, max: 2 });
+    after = settle(act(after, { kind: 'pick', cards: after.zones['p2.hand'].slice(0, 2) }));
     expect(lifeOf(after, 'p2')).toBe(18);
   });
 

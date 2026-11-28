@@ -102,8 +102,8 @@ describe('Beginner Box, batch 5', () => {
   cardTest('Hei Bai, Spirit of Balance', () => {
     let { s, ids } = board({ p1: ['Capital Guard', 'Komodo Rhino', ...lands(4, 'Plains')], hand1: ['Hei Bai, Spirit of Balance'] });
     s = passBoth(passBoth(act(s, { kind: 'cast', object: ids.hand1[0]! })));
-    expect(s.decision).toMatchObject({ kind: 'optionalCost', pay: 'sacrifice', options: [ids.p1[0], ids.p1[1]] });
-    s = settle(act(s, { kind: 'optionalCost', objects: [ids.p1[0]!] }));
+    expect(s.decision).toMatchObject({ kind: 'pick', done: 'Sacrifice', options: [ids.p1[0], ids.p1[1]] });
+    s = settle(act(s, { kind: 'pick', cards: [ids.p1[0]!] }));
     const hei = named(s, 'Hei Bai, Spirit of Balance')[0]!;
     expect(s.objects[hei]!.counters['+1/+1']).toBe(2);
     // It leaves: its counters go to the creature left.
@@ -118,7 +118,7 @@ describe('Beginner Box, batch 5', () => {
     s.objects[ids.p1[1]!]!.counters['+1/+1'] = 2;
     const hand = s.zones['p1.hand'].length;
     s = passBoth(passBoth(act(s, { kind: 'cast', object: ids.hand1[0]! })));
-    s = settle(act(s, { kind: 'optionalCost', objects: [ids.p1[1]!] }));
+    s = settle(act(s, { kind: 'pick', cards: [ids.p1[1]!] }));
     expect(s.zones['p1.hand']).toHaveLength(hand - 1 + 1);
     const colony = named(s, 'Buzzard-Wasp Colony')[0]!;
     expect(s.objects[colony]!.counters['+1/+1']).toBe(2); // the Rhino died with two counters
@@ -174,7 +174,7 @@ describe('Beginner Box, batch 5', () => {
     const paid = settle(act(after, { kind: 'yes' }));
     expect(paid.zones['p1.hand']).toHaveLength(hand - 1 + 3);
     const no = act(after, { kind: 'no' });
-    expect(no.decision?.kind).toBe('discardEffect');
+    expect(no.decision).toMatchObject({ kind: 'pick', text: 'Discard a card' });
   });
 
   cardTest('Dai Li Indoctrination', () => {

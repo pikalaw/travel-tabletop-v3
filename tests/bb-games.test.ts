@@ -26,7 +26,7 @@ function randomAnswer(s: GameState): Choice {
   const d = s.decision!;
   switch (d.kind) {
     case 'mulligan': return s.players[d.player].mulligans < 1 ? pick(legalActions(s)) : { kind: 'keep' };
-    case 'bottom': case 'discard': case 'discardEffect': return { kind: 'discard' === d.kind || d.kind === 'discardEffect' ? 'discard' : 'bottom', cards: s.zones[`${d.player}.hand`].slice(0, d.count) } as Choice;
+    case 'bottom': case 'discard': return { kind: d.kind, cards: s.zones[`${d.player}.hand`].slice(0, d.count) };
     case 'legend': case 'may': case 'payOrElse': return pick(legalActions(s));
     case 'priority': {
       const c = pick(legalActions(s));
@@ -56,9 +56,11 @@ function randomAnswer(s: GameState): Choice {
     case 'triggerTargets': return { kind: 'targets', targets: triggerTargetOptions(s).map((o) => (o.legal.length ? [pick(o.legal)] : [])) };
     case 'chooseColor': return { kind: 'color', color: pick(d.options) };
     case 'arrange': { const away = some(d.cards); return { kind: 'arrange', top: d.cards.filter((c) => !away.includes(c)), away }; }
-    case 'search': return { kind: 'search', cards: some(d.options, d.max) };
-    case 'pick': return { kind: 'pick', cards: d.min ? [pick(d.options)] : some(d.options, d.max) };
-    case 'optionalCost': return { kind: 'optionalCost', objects: n(2) ? d.options.slice(0, d.count) : [] };
+    case 'pick': {
+      if (d.orNone && n(2)) return { kind: 'pick', cards: [] };
+      const cards = some(d.options, d.max);
+      return { kind: 'pick', cards: cards.length >= d.min ? cards : d.options.slice(0, d.min) };
+    }
   }
 }
 

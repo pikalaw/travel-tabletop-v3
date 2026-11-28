@@ -79,15 +79,15 @@ answer(state: GameState, choice: Choice): GameState | Refusal  // checks the cho
 - **Mana:** which sources pay which part of a cost.
 - **Combat:** declare attackers, declare blockers, assign combat damage.
 - **Ordering:** triggers, and replacement effects that compete.
-- **Choosing cards:** discard, search, scry, "look at the top N".
-- **Yes or no:** a "may" ability.
+- **Choosing cards:** one general pick (discard, search, an optional cost, "look at the top N"), and arranging cards for scry and surveil.
+- **Yes or no:** a "may" ability, and "unless … pays".
 - **The mulligan.**
 
 Each decision names the player it belongs to; the controller uses that for hand-offs.
 
 **Casting can be backed out.** Until mana is paid, a cast in progress lives in the state as a partial activity. Cancel returns to the priority decision before it; that's a local undo, not logged as a move.
 
-**Stops are not rules.** The engine always gives priority as the rules say. Stops and auto-passing live in the game controller, which answers "pass" for a player who has no stop there. Those passes are logged as automatic and skipped by Undo. So the engine stays a plain rules machine, and stops can change without touching it. The controller also passes a player's priority right after they cast, unless the cast set "hold priority", and honours a player's announced "pass this combat" or "pass until end of turn".
+**Stops are not rules.** The engine always gives priority as the rules say. Stops and auto-passing live in the game controller, which answers "pass" for a player who has no stop there. Those passes are logged as automatic and skipped by Undo. So the engine stays a plain rules machine, and stops can change without touching it. The controller also passes a player's priority right after they cast, and honours a player's announced "pass this combat" or "pass until end of turn".
 
 ## Rules subsystems
 
@@ -125,31 +125,36 @@ Every card is printed data plus a hand-written script in a small effect vocabula
 
 **Card data.** A script, `scripts/build-cards.ts`, reads the v2 deck export (its manifest holds the packets, each card's full Scryfall record and the rulings, beside the images) and writes two things, both committed so that no build needs the export: `src/cards/cards.json` and `public/cards/`. The JSON holds the 76 packets, every printing in them and the 11 tokens, and the rulings by Oracle id. For each printing it keeps the Scryfall id (the key packets use), the Oracle id (the key card scripts use), name, mana cost and mana value, type line, Oracle text, power and toughness, colours and colour identity, keywords, layout, set, collector number and rarity. `public/cards/` holds each printing's large front image, named by its SHA-256 and checked against it (354 files, 44 MB). The script fails on anything the pool doesn't expect, such as a packet that isn't 20 cards or a double-faced card. The export is the one source of truth for the pool; a card not in it does not exist. What the export lacks (the mana a card produces, the tokens it makes) comes from the card scripts.
 
-**Scripts.** One file per card in `src/cards/scripts/`, keyed by the card's Oracle id, which every printing in `cards.json` carries (JSON can't hold code, so the hand-written script points at the generated data, never the other way). The build gathers the files into one map from Oracle id to script, and a test checks that each script's Oracle id is in the pool under the same name. A script lists the card's abilities as plain data built from the vocabulary, so the engine interprets it and a game's setup, abilities included, stays serializable for replay:
+**Scripts.** One file per card in `src/cards/scripts/`, keyed by the card's Oracle id, which every printing in `cards.json` carries (JSON can't hold code, so the hand-written script points at the generated data, never the other way). `src/cards/registry.ts` gathers every file in the folder into one map from Oracle id to script, so adding a card is adding a file. A script lists the card's abilities as plain data, so the engine interprets it and a game's setup, abilities included, stays serializable for replay:
 
 ```ts
-// Gran-Gran (the screenshot from v2): a trigger and a conditional cost reduction
+// Momo, Rambunctious Rascal: Flying / When Momo enters, he deals 4 damage to target tapped creature an opponent controls.
 export default card({
-  oracleId: '…', name: 'Gran-Gran',
-  triggered: [{ when: becomesTapped(self), effect: [draw(you, 1), discard(you, 1)] }],
-  statics: [{ while: count(cardsIn(graveyard(you)), isSubtype('Lesson')).atLeast(3),
-              effect: reduceCost(spellsYouCast(not(isType('Creature'))), generic(1)) }],
+  oracleId: '8854222e-590f-4fc0-b5d7-bf3d986b8507',
+  name: 'Momo, Rambunctious Rascal',
+  triggered: [{
+    when: { enters: {} }, self: true,
+    targets: [{ objects: { types: ['Creature'], tapped: true, controller: 'opponent' } }],
+    effects: [{ damage: 4, to: { target: 0 } }],
+    text: 'When Momo enters, he deals 4 damage to target tapped creature an opponent controls.',
+  }],
 });
 ```
 
-**The vocabulary** is the set of building blocks scripts may use:
+Flying needs no line in the script: keywords the engine implements come from the card data.
 
-- **Triggers:** enters, leaves, dies, attacks, blocks, becomes tapped, casts, step begins, damage dealt.
-- **Effects:** draw, discard, damage, gain or lose life, create token, counters, "gets +X/+Y until end of turn", destroy, exile, return to hand, tap or untap, search, scry, mill, sacrifice, add mana, gain control, copy.
-- **Selectors and conditions:** "target creature an opponent controls", counts, comparisons.
-- **Durations:** until end of turn, while, until it leaves.
-- **Costs:** mana, tap, sacrifice, discard, pay life.
+**The vocabulary** is what scripts are built from, in four places:
 
-Keywords (flying, haste, trample, the set's bending keywords) are implemented once in a keyword library and referenced by name. A card that needs something new adds it to the vocabulary, with its own tests, never as a one-off in the script.
+- `src/engine/abilities.ts`: abilities and their parts. Spell abilities and modes, activated abilities and their costs, triggers and their events, static abilities as layered continuous effects, replacement effects, target specs, object filters, amounts and conditions.
+- `src/engine/effects/`: what spells and abilities do, one module per mechanic (see "Adding cards and mechanics").
+- `src/cards/keywords.ts`: the set's keyword actions and abilities as ready-made parts (firebending, earthbend, airbend, landcycling, equip), so a script says `firebending(1)` rather than spelling out the trigger.
+- `src/cards/tokens.ts`: the tokens cards make.
 
-**Drafting from text.** A tool reads each card's Oracle text and drafts a script for common templates: keyword lines, "When ~ enters, draw a card", "~ gets +1/+1 until end of turn". A person reviews every draft, and nothing drafted is trusted unreviewed. The unusual cards are written by hand from the start.
+Keyword abilities that are rules of their own (flying, menace, first strike, prowess) are implemented where their rule applies, such as `combat.ts`, and listed in `ENGINE_KEYWORDS`. A card that needs something new adds it to the vocabulary, with its own tests, never as a one-off in the script.
 
-**Coverage.** Each card has a status: *missing*, *scripted*, or *tested* (its script has a scenario test showing the printed behaviour). Deck validation lets only *tested* cards into a game. A coverage report, built with the app, lists the pool by status and by the vocabulary it still lacks.
+**Coverage.** `src/cards/coverage.ts` gives each card a status: *vanilla* (no text beyond keywords the engine implements), *scripted*, or *missing*. Setup offers a packet only when none of its cards is missing. Tests check that every script names a card in the pool under its Oracle id, that every script has a card test, and that every effect in every script names exactly one mechanic.
+
+**Drafting from text (not built).** A tool would read Oracle text and draft scripts for common templates, each draft reviewed by a person. Until then every script is written by hand, helped by `scripts/scan-cards.ts`, which tags each card with the features it needs ([docs/card-scan.md](./card-scan.md)).
 
 ## Derived numbers
 
@@ -210,7 +215,7 @@ Rules bugs are the main risk, so most tests sit below the UI, and each layer has
 | Kind           | What it checks                                                                                                                                                               | Tool                            |
 |----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------|
 | Rules tests    | One Comprehensive Rules section at a time, on small built states: priority passes, 608.2b partial fizzles, 613 layer order, 704 actions, the 2024 damage division            | Vitest                          |
-| Card tests     | Each card's printed behaviour in a scenario ("Gran-Gran taps: draw one, discard one"); a card is *tested* only when it has one                                               | Vitest, with a scenario builder |
+| Card tests     | Each card's printed behaviour in a scenario ("Momo enters: 4 damage to a tapped creature"); every script must have one                                                       | Vitest, with a scenario builder |
 | Invariants     | After every step: every object in exactly one zone, no token off the battlefield, no attacker without combat, characteristics computable, no decision while the game is over | `checkInvariants`, as in v2     |
 | Property tests | Random legal decisions from random decks never break an invariant or throw; replaying a game's log gives the same state                                                      | fast-check                      |
 | Golden games   | Recorded games whose logs must replay to the same final state after every change                                                                                             | Vitest fixtures                 |
@@ -222,31 +227,48 @@ Rules bugs are the main risk, so most tests sit below the UI, and each layer has
 
 ![Build order: M0 to M5, each with its gate](images/milestones.png)
 
-M1 and M2 (highlighted) are the generic core: they need no Avatar card, only the Comprehensive Rules. M0 can run alongside M1, but it should finish before M2's effect vocabulary is fixed, so the vocabulary is built for the cards that exist. M0 is done: the card data is built, and [docs/card-scan.md](./card-scan.md) tags every card with the features it needs and sizes the 38 hard cards (2 large, 9 medium, 27 small), which sizes M4 and M5. M1's gate passes: a vanilla game plays to a win and its log replays to the same state, and random legal games keep every invariant. Two simplifications stand until M3: the solver prefers sources by a fixed order (floating mana, then sources that make fewer colours) rather than by a min-cost flow, and the controller keeps every state in memory rather than one snapshot per turn on disk. M2's gate passes too: rules tests for spells and abilities (601, 602, 605, 608), triggers (603, with look-back, intervening "if", APNAP and ordering), layers (613, with the ability-removal dependency), replacement effects (614) and state-based actions (704), plus random games with those cards that keep every invariant and replay exactly. The vocabulary lives in src/engine/abilities.ts; competing replacements apply in a fixed order (the object's own first, then by timestamp), which gives the same result as the affected player's choice for every pair the pool can produce: its replacements on other objects are Solid Ground and Animal Attendant (extra counters, which add up in any order), Combustion Technique (exile instead of dying) and stun counters, and no two of them change one event differently.
+M1 and M2 (highlighted) are the generic core: they need no Avatar card, only the Comprehensive Rules. M0 can run alongside M1, but it should finish before M2's effect vocabulary is fixed, so the vocabulary is built for the cards that exist. M0 is done: the card data is built, and [docs/card-scan.md](./card-scan.md) tags every card with the features it needs and sizes the 38 hard cards (2 large, 9 medium, 27 small), which sizes M4 and M5. M1's gate passes: a vanilla game plays to a win and its log replays to the same state, and random legal games keep every invariant. Two simplifications stand until M3: the solver prefers sources by a fixed order (floating mana, then sources that make fewer colours) rather than by a min-cost flow, and the controller keeps every state in memory rather than one snapshot per turn on disk. M2's gate passes too: rules tests for spells and abilities (601, 602, 605, 608), triggers (603, with look-back, intervening "if", APNAP and ordering), layers (613, with the ability-removal dependency), replacement effects (614) and state-based actions (704), plus random games with those cards that keep every invariant and replay exactly. The vocabulary lives in src/engine/abilities.ts and src/engine/effects/; competing replacements apply in a fixed order (the object's own first, then by timestamp), which gives the same result as the affected player's choice for every pair the pool can produce: its replacements on other objects are Solid Ground and Animal Attendant (extra counters, which add up in any order), Combustion Technique (exile instead of dying) and stun counters, and no two of them change one event differently.
 
 M4 ran before M3, to give the board real decks. Its gate passes: all 10 Beginner Box decks (126 cards) are scripted, each script with a card test, and random games between three-packet Beginner Box decks keep every invariant and replay exactly. The vocabulary grew with them: Auras and Equipment, last-known counters, "look at the top N", hand reveals, playing from exile, excess damage, "unless … pays" with waterbend, "tap an untapped creature" costs, and the "{1}: add one mana of any color" converter in the solver.
 
-M3's board is built and deployed for portrait: the setup screen, the session that decides whom the board faces (Look, one-tap Pass from the hand-off bar, flips blinded at each turn and after a visitor acts), the casting flow with its confirm step, a prompt for every decision, target rings and the arrow, pass ahead and hold priority, power and toughness breakdowns, and "while you were away". Its browser tests play random games through the screen and check that no hand is drawn during a hand-off; the gate's last step is two people finishing a game on one phone. Still open: dragging triggers to order them (they move with arrow buttons for now), judge actions and bug reports, landscape, and the two simplifications above.
+M3's board is built and deployed for portrait: the setup screen, the session that decides whom the board faces (Look, one-tap Pass from the hand-off bar, flips blinded at each turn and after a visitor acts), the casting flow (straight onto the stack, with a confirm step only when the payment taps a creature or an artifact or converts mana), a prompt for every decision, target rings and the arrow, pass ahead, power and toughness breakdowns, the log with what happened since the last Look marked and a banner for each turn, and playback of each step that resolved. Its browser tests play random games through the screen and check that no hand is drawn during a hand-off; the gate's last step is two people finishing a game on one phone. Still open: dragging triggers to order them (they move with arrow buttons for now), judge actions and bug reports, landscape, and the two simplifications above.
 
-## Adding cards later
+## Adding cards and mechanics
 
-A new card costs as much as its rules are new to the engine, so the engine is built to the Comprehensive Rules, not to the Avatar pool. Adding cards is then mostly scripting. Each future card falls into one of three tiers:
+A card is one module, and so is a mechanic. A new card costs as much as its rules are new to the engine, so the engine is built to the Comprehensive Rules, not to the Avatar pool, and adding cards is then mostly scripting. Each card falls into one of three tiers:
 
-| Tier               | What the card needs                           | Work                                              | Example                                                           |
-|--------------------|-----------------------------------------------|---------------------------------------------------|-------------------------------------------------------------------|
-| 1\. Script only    | Effects the vocabulary already has            | Write the script and its card test                | Another "deal 3 damage to any target", another earthbend creature |
-| 2\. New vocabulary | A new building block on rules the engine has  | Add the primitive with its tests, then the script | A new trigger condition, "return up to two cards"                 |
-| 3\. New rules      | A mechanic or card type the engine leaves out | An engine module with rules tests                 | Planeswalkers, double-faced cards, control changes                |
+| Tier               | What the card needs                           | Work                                                                                                          | Example                                                           |
+|--------------------|-----------------------------------------------|---------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
+| 1\. Script only    | Effects the vocabulary already has            | One script file and its card test                                                                             | Another "deal 3 damage to any target", another earthbend creature |
+| 2\. New vocabulary | A new building block on rules the engine has  | One effect module, or one field in `abilities.ts` and the code that reads it; its rules test; then the script | "Return up to two cards", a new trigger event                     |
+| 3\. New rules      | A mechanic or card type the engine leaves out | An engine module with rules tests                                                                             | Planeswalkers, double-faced cards, control changes                |
+
+**Adding a card (tier 1).**
+
+1. Find the card's Oracle id in `src/cards/cards.json`.
+2. Write `src/cards/scripts/<card-name>.ts`: the Oracle text as a comment, then `export default card({ oracleId, name, … })` with only the abilities that need a script, using `keywords.ts` for the set's keywords.
+3. Add a `cardTest('<card name>', …)` to a file in `tests/cards/`: a small board from the harness, the card played, and its printed behaviour checked.
+4. Run the tests. Nothing else changes: the registry finds the file, coverage marks the card scripted, and its packets become playable once all their cards are covered.
+
+**Adding a mechanic (tier 2).** When a card needs an effect the vocabulary lacks:
+
+1. Write `src/engine/effects/<mechanic>.ts` with the effect's type and its handler. The type is an interface whose one distinctive field names the mechanic, as in `{ mill: PlayerRef; n: Amount }`. The handler, a `Handler<Mill>`, works through the `Resolution` that `kit.ts` passes it: amounts evaluated now (`n`); the players and objects a reference names (`players`, `objs`, `recipients`); `log` for the game log; `ask` and `answer` for a player's choice; `then` to run more effects next; and `addEffect` for a continuous effect.
+2. List it in `src/engine/effects/index.ts`: its type in `Effect`, its handler in `HANDLERS`. The type checker refuses an effect type without a handler.
+3. Test it in `tests/abilities.test.ts` with a test card from `tests/ability-cards.ts`, then use it in the card's script.
+
+A mechanic that asks a player uses one of the general decisions, which the prompt panel already draws: `pick` (between a minimum and a maximum of some cards, or none: discards, searches, optional costs, looks at the library), `arrange` (scry and surveil), `may`, `payOrElse` and `chooseColor`. A new kind of decision is needed only when none fits, and it costs three more places: its type in `types.ts`, its check in `engine.ts`'s `apply`, and its prompt in `src/ui/Prompts.tsx`.
+
+The other building blocks are declared in `abilities.ts` and each read in one place: a trigger event in `triggers.ts`; a filter field, amount or condition in `evaluate.ts`; a cost in `payment.ts` (mana and waterbend) or `engine.ts` (the rest); a field of a continuous effect in the layers (`characteristics.ts`); a replacement in `zones.ts`. A new one is a field there plus the code that reads it, with its rules test.
 
 **What keeps tier 3 small.** The core modules implement the general rule, not the Avatar subset:
 
 - **Layers:** all seven layers and timestamps, with dependencies stubbed.
 - **Frameworks:** replacement effects and triggers as general systems.
-- **Objects:** a face list (one face today) and a controller separate from the owner. Double-faced cards and control changes then extend the engine without rewriting it.
+- **Objects:** a controller separate from the owner, so control changes extend the engine without rewriting it. There is no face list yet: double-faced cards, which the pool doesn't have, would add one.
 
 The rules the pool never touches are left out of play, not out of the data model.
 
-**Import pipeline.** A new export goes through the same build step. The coverage report then lists the new cards as *missing*, sorted by tier: unknown keywords and unmatched templates suggest tier 2 or 3. Deck validation keeps them out of games until they are *tested*. Nothing about a new card needs to be anticipated; the report shows what's new.
+**Import pipeline.** A new export goes through the same build step. Coverage then lists the new cards as *missing*, and setup leaves their packets out until every card in them is covered. `scripts/scan-cards.ts` tags the features each new card needs, which sorts them by tier. Nothing about a new card needs to be anticipated; the scan shows what's new.
 
 **The real cost** is tier 3, and it's known per set before any code is written, by the same scan done for the Avatar pool.
 

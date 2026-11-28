@@ -119,8 +119,8 @@ describe('Beginner Box, batch 2', () => {
   cardTest('Geyser Leaper', () => {
     const { s, ids } = board({ p1: ['Geyser Leaper', ...lands(4, 'Island')] });
     let after = passBoth(act(s, { kind: 'activate', object: ids.p1[0]!, ability: 0 }));
-    after = passUntil(after, (x) => x.decision?.kind === 'discardEffect');
-    expect(after.decision).toMatchObject({ kind: 'discardEffect', count: 1 });
+    after = passUntil(after, (x) => x.decision?.kind === 'pick');
+    expect(after.decision).toMatchObject({ kind: 'pick', min: 1, max: 1 });
   });
 
   cardTest('Katara, Bending Prodigy', () => {

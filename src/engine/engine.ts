@@ -8,25 +8,26 @@ import type { ActivatedAbility, Effect, TargetSpec } from './abilities';
 import { characteristics, isType, summoningSick, view } from './characteristics';
 import { attackers, canAttack, canBlock, checkAttack, checkBlocks, checkSplit, dealCombatDamage, declareAttackers, declareBlockers, endCombat, hasFirstStrikeStep, splitsToAsk } from './combat';
 import { runEffects } from './effects';
-import { amount, holds, matches, type Context } from './evaluate';
-import { parseCost, solvePayment, type ManaSource } from './mana';
+import { holds, matches, type Context } from './evaluate';
+import { parseCost } from './mana';
+import { costToPay, pay, spellPayment } from './payment';
 import { seedRng } from './rng';
 import { stateBasedActions } from './sba';
-import { battlefield, controlledBy, createObject, draw, event, move, obj, printed, shuffleLibrary, zoneOf } from './state';
+import { activatedOf, battlefield, controlledBy, createObject, draw, event, move, obj, shuffleLibrary, spellOf, zoneOf } from './state';
 import { checkTargets, hasTargets, isLegalTarget, legalTargets, onlyChoice } from './targets';
 import { fire, triggeredAbility } from './triggers';
-import type { Choice, Color, Decision, GameObject, GameSetup, GameState, ManaSymbol, ObjectId, PendingTrigger, PlayerId, Refusal, Step, Target, ZoneId } from './types';
+import type { Choice, Decision, GameObject, GameSetup, GameState, ObjectId, PendingTrigger, PlayerId, Refusal, Step, Target, ZoneId } from './types';
 import { COLORS, PLAYERS, STEPS, other } from './types';
 import { leaveBattlefield, putOntoBattlefield, tap } from './zones';
 
 const HAND_SIZE = 7;
 const STARTING_LIFE = 20;
-const BASIC_MANA: Record<string, Color> = { Plains: 'W', Island: 'U', Swamp: 'B', Mountain: 'R', Forest: 'G' };
 const PERMANENT_TYPES = ['Creature', 'Artifact', 'Enchantment', 'Planeswalker', 'Battle'];
 
 const playerName = (s: GameState, p: PlayerId) => s.setup.players[p].name;
 const freshTurnLog = (): GameState['turnLog'] => ({ attacked: { p1: false, p2: false }, lifeLost: { p1: 0, p2: 0 }, drawn: { p1: 0, p2: 0 } });
 const nameOf = (s: GameState, id: ObjectId) => characteristics(s, obj(s, id)).name;
+const ctxFor = (p: PlayerId, source: ObjectId): Context => ({ controller: p, source });
 const hand = (s: GameState, p: PlayerId) => s.zones[zoneOf(p, 'hand')];
 
 export function start(setup: GameSetup, seed: number): GameState {
@@ -57,147 +58,15 @@ export function start(setup: GameSetup, seed: number): GameState {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Abilities of objects, and mana.
-
-const activatedOf = (s: GameState, id: ObjectId): ActivatedAbility[] => s.setup.cards[obj(s, id).card]?.script?.activated ?? [];
-const spellOf = (s: GameState, id: ObjectId) => s.setup.cards[obj(s, id).card]?.script?.spell;
-const ctxFor = (p: PlayerId, source: ObjectId): Context => ({ controller: p, source });
-
-/** The mana a tap-only mana ability's effects add: the kinds, and how many (an "if … instead" counted as it stands). */
-function manaYield(s: GameState, id: ObjectId, effects: Effect[]): { makes: (Color | 'C')[]; n: number } {
-  const chosen = obj(s, id).chosenColor;
-  const ctx: Context = { controller: obj(s, id).controller, source: id };
-  let makes: (Color | 'C')[] = [];
-  let n = 0;
-  for (const e of effects) {
-    if ('addMana' in e) {
-      makes = [...makes, ...(e.anyColor ? [...COLORS] : [...e.addMana, ...(e.orChosenColor && chosen ? [chosen] : [])])];
-      n = Math.max(n, typeof e.n === 'number' ? e.n : 1);
-    } else if ('if' in e) {
-      const branch = manaYield(s, id, holds(s, view(s), e.if, ctx) ? e.then : e.else ?? []);
-      if (branch.n) { makes = [...makes, ...branch.makes]; n = branch.n; }
-    }
-  }
-  return { makes, n };
-}
-
-/** What a permanent makes by tapping alone: basic land types (305.6) and "{T}: Add …" abilities. */
-export function tapForMana(s: GameState, id: ObjectId): { makes: (Color | 'C')[]; n: number } | null {
-  const c = characteristics(s, obj(s, id));
-  const basic = c.subtypes.map((t) => BASIC_MANA[t]).filter((m): m is Color => !!m);
-  let n = basic.length ? 1 : 0;
-  const scripted: (Color | 'C')[] = [];
-  if (!c.abilitiesRemoved) for (const a of activatedOf(s, id)) {
-    if (!a.mana || !a.cost.tap || a.cost.mana || a.cost.sacrificeSelf || a.cost.payLife) continue;
-    const y = manaYield(s, id, a.effects);
-    scripted.push(...y.makes);
-    n = Math.max(n, y.n);
-  }
-  const makes = [...new Set([...basic, ...scripted])];
-  return makes.length ? { makes, n: Math.max(n, 1) } : null;
-}
-
-/**
- * What `p` can pay mana with now: floating mana (including mana that lasts until end of combat),
- * then untapped mana sources. For a waterbend cost, also each untapped artifact and creatures not
- * already a mana source, paying generic only (701.67; like convoke, summoning sickness doesn't matter).
- */
-export function manaSources(s: GameState, p: PlayerId, opts: { waterbend?: boolean } = {}): ManaSource[] {
-  const out: ManaSource[] = [];
-  for (const [prefix, pool] of [['pool', s.players[p].pool], ['combat', s.players[p].combatPool]] as const) {
-    for (const c of [...COLORS, 'C'] as const) for (let i = 0; i < pool[c]; i++) out.push({ id: `${prefix}:${c}:${i}`, makes: [c], floating: true });
-  }
-  const mana = new Set<ObjectId>();
-  for (const o of controlledBy(s, p)) {
-    if (o.tapped) continue;
-    if (isType(s, o, 'Creature') && summoningSick(s, o)) continue;
-    const t = tapForMana(s, o.id);
-    if (!t) continue;
-    // A source that makes two mana is two units of one tap: "id", then "id#1".
-    for (let k = 0; k < t.n; k++) out.push({ id: k ? `${o.id}#${k}` : o.id, makes: t.makes });
-    mana.add(o.id);
-  }
-  if (opts.waterbend) {
-    for (const o of controlledBy(s, p)) {
-      if (o.tapped || mana.has(o.id) || !(isType(s, o, 'Artifact') || isType(s, o, 'Creature'))) continue;
-      out.push({ id: `wb:${o.id}`, makes: [], genericOnly: true });
-    }
-  }
-  return out;
-}
-
-/**
- * A cost's mana and waterbend parts as one cost to solve, and the sources that may pay it. The
- * ability's own source is excluded when the cost taps it, and otherwise tapped for waterbend last.
- */
-function costToPay(s: GameState, p: PlayerId, mana: ManaSymbol[], waterbend = 0, source?: ObjectId, tapsSource = false) {
-  const cost: ManaSymbol[] = waterbend ? [...mana, { kind: 'generic', amount: waterbend }] : mana;
-  const all = manaSources(s, p, { waterbend: waterbend > 0 }).filter((m) => !(tapsSource && (m.id === source || m.id === `wb:${source}`)));
-  const own = all.filter((m) => m.id === `wb:${source}`);
-  const sources = [...all.filter((m) => m.id !== `wb:${source}`), ...own];
-  const plain = solvePayment(cost, sources);
-  if (plain) return plain;
-  // A "{1}: Add one mana of any color" ability (Barrels of Blasting Jelly) turns one other mana
-  // into any colour: try each source in turn as the one spent on it.
-  for (const conv of converters(s, p)) {
-    for (let i = 0; i < sources.length; i++) {
-      const m = sources[i]!;
-      if (m.genericOnly || m.id === conv.id) continue;
-      const via: ManaSource = { id: `via:${conv.id}:${conv.index}>${m.id}`, makes: [...COLORS], ...(m.floating ? { floating: true } : {}) };
-      const got = solvePayment(cost, sources.map((x, j) => (j === i ? via : x)));
-      if (got) return got;
-    }
-  }
-  return null;
-}
-
-/** Untapped-or-not permanents with an unused "{1}: Add one mana of any color. Activate only once each turn." */
-function converters(s: GameState, p: PlayerId): { id: ObjectId; index: number }[] {
-  const out: { id: ObjectId; index: number }[] = [];
-  for (const o of controlledBy(s, p)) {
-    if (characteristics(s, o).abilitiesRemoved) continue;
-    activatedOf(s, o.id).forEach((a, index) => {
-      const any = a.effects.some((e) => 'addMana' in e && e.anyColor);
-      if (a.mana && any && a.cost.mana === '{1}' && !a.cost.tap && a.oncePerTurn && !s.activatedThisTurn[`${o.id}:${index}`]) out.push({ id: o.id, index });
-    });
-  }
-  return out;
-}
-
-function pay(s: GameState, p: PlayerId, sources: string[]): void {
-  const tapped = new Map<ObjectId, number>();
-  for (let id of sources) {
-    if (id.startsWith('via:')) {
-      // The mana from this source pays the converter's {1}; the converter makes the colour needed.
-      const [conv, inner] = id.slice(4).split('>') as [string, string];
-      s.activatedThisTurn[conv] = (s.activatedThisTurn[conv] ?? 0) + 1;
-      event(s, `${playerName(s, p)} activates ${nameOf(s, conv.split(':')[0]!)} for mana of any colour`);
-      id = inner;
-    }
-    const [kind, c] = id.split(':') as [string, Color | 'C'];
-    if (kind === 'pool') s.players[p].pool[c]--;
-    else if (kind === 'combat') s.players[p].combatPool[c]--;
-    else if (kind === 'wb') tap(s, id.slice(3));
-    else { const o = id.split('#')[0]!; tapped.set(o, (tapped.get(o) ?? 0) + 1); }
-  }
-  // Tapping a source makes all its mana; what this payment didn't use floats in the pool.
-  for (const [id, used] of tapped) {
-    const t = tapForMana(s, id)!;
-    tap(s, id);
-    if (t.n > used) s.players[p].pool[t.makes[0]!] += t.n - used;
-  }
-}
-
-// ---------------------------------------------------------------------------------------------
 // What a player may do now.
 
 const sorcerySpeed = (s: GameState, p: PlayerId) =>
   s.active === p && (s.step === 'main1' || s.step === 'main2') && s.zones.stack.length === 0;
 
-/** Why `p` can't play this land now, or null. */
 /** "You may play that card this turn" (Zuko, Exiled Prince). */
 const playableFromExile = (s: GameState, p: PlayerId, o: GameObject) => o.zone === zoneOf(p, 'exile') && o.owner === p && o.playableTurn === s.turn;
 
+/** Why `p` can't play this land now, or null. */
 export function whyNotPlay(s: GameState, p: PlayerId, id: ObjectId): string | null {
   const o = s.objects[id];
   if (!o || (o.zone !== zoneOf(p, 'hand') && !playableFromExile(s, p, o))) return 'Not in your hand';
@@ -266,48 +135,6 @@ export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Ta
   return targets === undefined ? null : checkTargets(s, specs, targets, ctxFor(p, id));
 }
 
-/** The payment for casting a card now: its mana cost, or {2} from airbending exile (701.66), plus any additional waterbend cost. */
-function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0) {
-  const o = obj(s, id);
-  const printedCost = o.zone.endsWith('.exile') && o.airbended ? parseCost('{2}') : printed(s, o).manaCost;
-  // 107.3: X is paid as the chosen number.
-  const cost = printedCost.map((m): ManaSymbol => (m.kind === 'x' ? { kind: 'generic', amount: x } : m));
-  const spell = spellOf(s, id);
-  const extra = spell?.additionalCost;
-  let reduced = cost;
-  if (spell?.reduceBy !== undefined) {
-    // 601.2f: reductions take off generic mana only.
-    let off = amount(s, view(s), spell.reduceBy, ctxFor(p, id));
-    reduced = cost.map((m) => { if (m.kind !== 'generic' || off <= 0) return m; const take = Math.min(off, m.amount); off -= take; return { kind: 'generic', amount: m.amount - take }; });
-  }
-  return costToPay(s, p, extra?.mana ? [...reduced, ...parseCost(extra.mana)] : reduced, extra?.waterbend ?? 0);
-}
-
-/**
- * What a cast or an activation would spend, for the confirm step: the permanents it taps (for mana,
- * waterbend or a converter) and the floating mana it uses. Null if it can't be paid.
- */
-export function paymentPreview(s: GameState, p: PlayerId, c: Choice): { tapped: ObjectId[]; floating: number; converted: boolean } | null {
-  let pay: { sources: string[] } | null = null;
-  if (c.kind === 'cast') pay = s.objects[c.object] ? spellPayment(s, p, c.object, c.x ?? 0) : null;
-  else if (c.kind === 'activate') {
-    const a = s.objects[c.object] ? activatedOf(s, c.object)[c.ability] : undefined;
-    if (!a) return null;
-    pay = a.cost.mana || a.cost.waterbend ? costToPay(s, p, parseCost(a.cost.mana ?? ''), a.cost.waterbend, c.object, !!a.cost.tap) : { sources: [] };
-  }
-  if (!pay) return null;
-  const tapped = new Set<ObjectId>();
-  let floating = 0, converted = false;
-  for (const id of pay.sources) {
-    if (id.startsWith('via:')) converted = true;
-    const inner = id.startsWith('via:') ? id.split('>')[1]! : id;
-    if (inner.startsWith('pool:') || inner.startsWith('combat:')) floating++;
-    else tapped.add((inner.startsWith('wb:') ? inner.slice(3) : inner).split('#')[0]!);
-  }
-  return { tapped: [...tapped], floating, converted };
-}
-
-/** Why `p` can't activate ability `index` of this permanent now, or null. With `targets`, also whether those are legal. */
 /** Creatures that could be tapped for a "tap an untapped creature you control" cost. */
 export function tapCandidates(s: GameState, p: PlayerId, a: ActivatedAbility): ObjectId[] {
   const f = a.cost.tapAnother;
@@ -315,6 +142,7 @@ export function tapCandidates(s: GameState, p: PlayerId, a: ActivatedAbility): O
   return controlledBy(s, p).filter((o) => !o.tapped && isType(s, o, 'Creature') && matches(s, view(s), o, f, ctxFor(p, o.id))).map((o) => o.id);
 }
 
+/** Why `p` can't activate ability `index` of this permanent now, or null. With `targets`, also whether those are legal. */
 export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: number, targets?: Target[][], tapping?: ObjectId[]): string | null {
   const o = s.objects[id];
   const a = o ? activatedOf(s, id)[index] : undefined;
@@ -514,21 +342,6 @@ function apply(s: GameState, d: Decision, c: Choice): string | null {
       continueResolving(s, c);
       return null;
     }
-    case 'discardEffect': {
-      if (c.kind !== 'discard') return wrong(d, c);
-      const bad = checkCards(s, p, c.cards, d.count);
-      if (bad) return bad;
-      continueResolving(s, c);
-      return null;
-    }
-    case 'optionalCost': {
-      if (c.kind !== 'optionalCost') return wrong(d, c);
-      if (c.objects.length && (c.objects.length !== d.count || c.objects.some((id) => !d.options.includes(id)) || new Set(c.objects).size !== c.objects.length)) {
-        return `Choose ${d.count} or none`;
-      }
-      continueResolving(s, c);
-      return null;
-    }
     case 'payOrElse': {
       if (c.kind !== 'yes' && c.kind !== 'no') return wrong(d, c);
       const payment = costToPay(s, p, parseCost(d.cost), d.waterbend ?? 0);
@@ -553,15 +366,10 @@ function apply(s: GameState, d: Decision, c: Choice): string | null {
     }
     case 'pick': {
       if (c.kind !== 'pick') return wrong(d, c);
-      if (c.cards.length < d.min || c.cards.length > d.max || new Set(c.cards).size !== c.cards.length || c.cards.some((id) => !d.options.includes(id))) {
-        return d.min === d.max ? `Choose ${d.min} of the cards offered` : `Choose up to ${d.max} of the cards offered`;
+      const none = d.orNone && c.cards.length === 0;
+      if (!none && (c.cards.length < d.min || c.cards.length > d.max || new Set(c.cards).size !== c.cards.length || c.cards.some((id) => !d.options.includes(id)))) {
+        return `Choose ${d.min === d.max ? d.min : d.min ? `${d.min} to ${d.max}` : `up to ${d.max}`} of the cards offered${d.orNone ? ', or none' : ''}`;
       }
-      continueResolving(s, c);
-      return null;
-    }
-    case 'search': {
-      if (c.kind !== 'search') return wrong(d, c);
-      if (c.cards.length > d.max || new Set(c.cards).size !== c.cards.length || c.cards.some((id) => !d.options.includes(id))) return `Choose up to ${d.max} of the cards that match`;
       continueResolving(s, c);
       return null;
     }
@@ -899,3 +707,5 @@ function skip(s: GameState): void {
   s.pendingTurnBased = false;
   s.priority = null;
 }
+
+export { manaSources, paymentPreview, tapForMana } from './payment';

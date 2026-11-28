@@ -9,8 +9,8 @@ Two players share one device; the app runs every turn, step and priority pass, p
 combat and tallies every number, and allows only legal moves. It plays the Avatar card pool: each
 deck is three of the 76 twenty-card Beginner Box and Jumpstart packets.
 
-**Status:** in design and early development. The board above is a mockup. The current version of
-the app is [v2](https://github.com/pikalaw/travel-tabletop), the rules-free playmat.
+**Status:** playable, with the 10 Beginner Box decks; the Jumpstart packets come next. The board
+above is the design mockup. [v2](https://github.com/pikalaw/travel-tabletop) is the rules-free playmat.
 
 **Site:** https://pikalaw.github.io/travel-tabletop-v3/
 
@@ -18,6 +18,8 @@ the app is [v2](https://github.com/pikalaw/travel-tabletop), the rules-free play
 
 - [Product requirements](docs/prd.md)
 - [Technical design](docs/technical-design.md), with the build order (M0–M5)
+- [Adding cards and mechanics](docs/technical-design.md#adding-cards-and-mechanics): a card is one
+  script file and its test; a new mechanic is one effect module
 - [All docs and assets](docs/README.md)
 
 ## Run it

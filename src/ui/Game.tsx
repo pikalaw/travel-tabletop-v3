@@ -8,112 +8,25 @@ import { characteristics } from '../engine/characteristics';
 import { proposedSplit } from '../engine/combat';
 import { attackCandidates, blockCandidates, legalActions, paymentPreview, triggerTargetOptions } from '../engine/engine';
 import { triggeredAbility } from '../engine/triggers';
-import type { Choice, Color, GameState, ObjectId, PlayerId, Target } from '../engine/types';
+import type { Choice, ObjectId, PlayerId, Target } from '../engine/types';
 import { other } from '../engine/types';
 import { canRedo, canUndo, current } from '../host/controller';
 import { acting, choose, handingOff, look, newInHand, redoLast, resignGame, undoLast, visibleHand, type Session } from '../host/session';
 import { Board, type Marks } from './Board';
 import { CardView, type CardAction } from './CardView';
 import { nextNeed, toChoice, withDrop, type Intent, type Need } from './flow';
-import { beats, cardImage, formatCost, nameOf, passMeaning, playerName, siblings, type Beat } from './model';
+import { Footer } from './Footer';
+import { LogPanel, turnPlayer } from './LogPanel';
 import { installLongPress } from './longpress';
+import { beats, cardImage, playerName, siblings, type Beat } from './model';
+import { BEAT_MS, BeatBanner, type Controls } from './Playback';
+import { DecisionPrompt, IntentPrompt, type Answering } from './Prompts';
 import { CardList, Sheet } from './Sheets';
 
 const EMPTY: Marks = { selectable: new Set(), selected: new Set(), glow: new Set(), paying: new Set(), blocks: new Map(), fresh: new Set(), pulse: new Map() };
 
-/** Words for what the acting player must decide, for the hand-off bar. */
-function asking(s: GameState): string {
-  const d = s.decision;
-  if (!d) return '';
-  switch (d.kind) {
-    case 'priority': return s.events[s.events.length - 1]?.text ?? 'your move';
-    case 'mulligan': return 'keep or mulligan';
-    case 'bottom': return `put ${d.count} card${d.count > 1 ? 's' : ''} on the bottom`;
-    case 'attackers': return 'declare attackers';
-    case 'blockers': return 'declare blockers';
-    case 'damage': return `divide ${nameOf(s, d.attacker)}'s damage`;
-    case 'discard': case 'discardEffect': return `discard ${d.count}`;
-    case 'legend': return `keep one ${d.name}`;
-    case 'triggerOrder': return 'order your triggers';
-    case 'triggerTargets': return 'choose targets for a trigger';
-    case 'may': return 'a "may" choice';
-    case 'chooseColor': return `choose a colour for ${nameOf(s, d.object)}`;
-    case 'arrange': return d.to === 'bottom' ? 'scry' : 'surveil';
-    case 'search': return 'search your library';
-    case 'optionalCost': return `you may ${d.pay}`;
-    case 'payOrElse': return `pay ${d.cost}${d.waterbend ? `waterbend {${d.waterbend}}` : ''}?`;
-    case 'pick': return d.text.toLowerCase();
-  }
-}
-
-/**
- * The log (v2's log): every public event, numbered by turn, newest last and in view. Lines since
- * the player last acted are marked, which is what "while you were away" used to show.
- */
-function LogPanel({ s, since, onClose }: { s: GameState; since: number | null; onClose: () => void }) {
-  const panel = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (panel.current) panel.current.scrollTop = panel.current.scrollHeight; }, [s.events.length]);
-  const events = s.events.slice(-400);
-  const offset = s.events.length - events.length;
-  return (
-    <div class="log-panel" data-testid="log" ref={panel}>
-      <button class="log-close" onClick={onClose} aria-label="Close the log" data-testid="close-log">✕</button>
-      <ol class="log">
-        {events.map((e, i) => {
-          // A banner in the turn player's colour opens each turn, as in v2.
-          const head = i === 0 || events[i - 1]!.turn !== e.turn;
-          const who = turnPlayer(s, e.turn);
-          return [
-            head && <li key={`t${e.turn}`} class={`turn-head ${who ?? ''}`}>{who ? `Turn ${e.turn} · ${playerName(s, who)}` : 'Mulligans'}</li>,
-            <li key={offset + i} class={since !== null && offset + i >= since ? 'new' : ''}>{e.text}</li>,
-          ];
-        })}
-      </ol>
-    </div>
-  );
-}
-
-/** Whose turn a turn number is (turns alternate from the first player); none for the mulligans. */
-const turnPlayer = (s: GameState, turn: number): PlayerId | null => (turn < 1 ? null : turn % 2 === 1 ? s.setup.first : other(s.setup.first));
-
-/** The undo icon: an arrow curving back. */
-const UndoIcon = () => (
-  <svg class="icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
-  </svg>
-);
-
-/** Words for a decision Undo would take back: "Undo Claire's block". */
-const UNDO_WORDS: Partial<Record<Choice['kind'], string>> = { cast: 'cast', play: 'land', activate: 'ability', attack: 'attack', block: 'block', pass: 'pass', keep: 'keep', mulligan: 'mulligan', targets: 'targets', order: 'order', discard: 'discard' };
-
 /** How long the new-turn banner shows. */
 const TURN_FLASH_MS = 1800;
-
-/** How long each step shows when playback runs by itself (»). */
-const BEAT_MS = 1500;
-
-/** Playback controls: › the next step, » the rest by itself, ✕ stop. */
-interface Controls { next: () => void; auto: () => void; end: () => void; auto_: boolean; last: boolean; view: (id: ObjectId, at: number) => void }
-
-function BeatBanner({ s, beat, n, of, c }: { s: GameState; beat: Beat; n: number; of: number; c: Controls }) {
-  return (
-    <div class={`beat ${beat.controller ?? ''}`} data-testid="beat">
-      <span class="beat-controls">
-        {!c.last && <button class="btn" onClick={c.next} aria-label="Next step" data-tip="Show the next step." data-testid="beat-next">›</button>}
-        {!c.last && !c.auto_ && <button class="btn" onClick={c.auto} aria-label="Play the rest" data-tip="Play the rest, a step every second and a half." data-testid="beat-auto">»</button>}
-        <button class="btn" onClick={c.end} aria-label="Done" data-tip="Stop the playback and show the board as it is now. Your next move stops it too." data-testid="beat-end">✕</button>
-      </span>
-      {beat.image ? <img src={beat.image} alt="" data-card={beat.object} data-card-at={beat.at - 1} onClick={() => beat.object && c.view(beat.object, beat.at - 1)} data-testid="beat-card" /> : <span class="beat-icon">⚔</span>}
-      <span class="beat-text">
-        <b class={beat.controller ? `by ${beat.controller}` : ''}>{beat.title}</b>
-        {beat.controller && <span class="dim"> · {playerName(s, beat.controller)}</span>}
-        {of > 1 && <span class="dim"> · {n}/{of}</span>}
-        {beat.text && <span class="beat-ability">{beat.text}</span>}
-        {beat.lines.map((t, i) => <span key={i} class="beat-line">{t}</span>)}
-      </span>
-    </div>
-  );
-}
 
 export function GameScreen({ session, onChange, onExit, onRematch }: {
   session: Session; onChange: (x: Session) => void; onExit: () => void; onRematch: (chooser: PlayerId) => void;
@@ -195,7 +108,7 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
     next: () => setPlay((p) => (p && p.k + 1 < p.beats.length ? { ...p, k: p.k + 1 } : p)),
     auto: () => setPlay((p) => (p && p.k + 1 < p.beats.length ? { ...p, k: p.k + 1, auto: true } : p)),
     end: () => setPlay(null),
-    auto_: !!play?.auto, last: !!play && play.k + 1 >= play.beats.length, view,
+    running: !!play?.auto, last: !!play && play.k + 1 >= play.beats.length, view,
   };
 
   useEffect(() => {
@@ -265,8 +178,8 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
         marks = { ...marks, selectable: new Set(spec?.legal ?? []), selected: new Set(picking) };
         break;
       }
-      case 'bottom': case 'discard': case 'discardEffect': marks = { ...marks, selectable: new Set(s.zones[`${d.player}.hand`]), selected: new Set(chosen) }; break;
-      case 'optionalCost': marks = { ...marks, selectable: new Set(d.options), selected: new Set(chosen) }; break;
+      case 'bottom': case 'discard': marks = { ...marks, selectable: new Set(s.zones[`${d.player}.hand`]), selected: new Set(chosen) }; break;
+      case 'pick': marks = { ...marks, selectable: new Set(d.options), selected: new Set(chosen) }; break;
       case 'legend': marks = { ...marks, selectable: new Set(d.objects), selected: new Set(chosen) }; break;
       default: break;
     }
@@ -295,8 +208,8 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
         if (next.length >= opts.length) send({ kind: 'targets', targets: next.map((y) => [y]) }); else setPicking(next);
         return;
       }
-      case 'bottom': case 'discard': case 'discardEffect': toggleChosen(t, d.count); return;
-      case 'optionalCost': toggleChosen(t, d.count); return;
+      case 'bottom': case 'discard': toggleChosen(t, d.count); return;
+      case 'pick': toggleChosen(t, d.max); return;
       case 'legend': setChosen([t]); return;
       default: return;
     }
@@ -338,232 +251,12 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
   const lastManual = [...session.game.record.choices].reverse().find((c) => !c.auto);
   const doUndo = () => { setPlay(null); setIntent(null); setMenu(null); onChange(undoLast(session)); };
   const askUndo = () => { if (lastManual && lastManual.player !== me) setMenu('undo'); else doUndo(); };
-  // Undo that would take back the other player's decision says so, in their colour.
-  const undoOther = lastManual && d && lastManual.player !== d.player ? lastManual : null;
-  const undoWords = undoOther ? `Undo ${playerName(s, undoOther.player)}'s ${UNDO_WORDS[undoOther.choice.kind] ?? 'move'}` : 'Undo';
-  // The undo icon; taking back the other player's decision adds whose and what ("Claire's block").
-  const undoLabel = <><UndoIcon />{undoOther && <span class="undo-who">{undoWords.replace(/^Undo /, '')}</span>}</>;
-  // The menu is on every footer: the hand-off bar, the player's own footer and the game's end.
-  const menuButton = (
-    <button class="btn" onClick={() => setMenu('menu')} aria-label="Menu" data-tip="The log, redo, hide your hand, resign, or leave the game." data-testid="menu">☰</button>
-  );
-  const undoClass = `btn ${undoOther ? `undo-other ${undoOther.player}` : ''}`;
 
-  // ----- the prompt panel and the footer
-  const prompt = renderPrompt();
-  const footer = renderFooter();
-
-  function renderPrompt() {
-    if (off || !d) return null;
-    if (intent && need) {
-      const name = nameOf(s, intent.object);
-      const cancel = <button class="btn" onClick={() => { setIntent(null); setPicking([]); }} data-tip="Put the card back. Nothing changes." data-testid="cancel">Cancel</button>;
-      switch (need.kind) {
-        case 'modes': {
-          const pickMode = (i: number) => (need.max === 1 ? setIntent({ ...intent, modes: [i], targets: [] }) : setModes((m) => (m.includes(i) ? m.filter((y) => y !== i) : [...m, i])));
-          return (
-            <div class="prompt">
-              <p><b>{name}</b>: choose {need.max === 1 ? 'one' : `${need.min === need.max ? need.min : `${need.min} to ${need.max}`}`}</p>
-              {need.options.map((m, i) => <button key={i} class={`btn opt ${modes.includes(i) ? 'on' : ''}`} disabled={!m.ok} onClick={() => pickMode(i)} data-testid={`mode-${i}`}>{m.text}</button>)}
-              <div class="row">{cancel}{need.max > 1 && <button class="btn primary" disabled={modes.length < need.min} onClick={() => setIntent({ ...intent, modes: [...modes].sort(), targets: [] })}>Done</button>}</div>
-            </div>
-          );
-        }
-        case 'x': return (
-          <div class="prompt">
-            <p><b>{name}</b>: choose X</p>
-            <div class="row stepper"><button class="btn" onClick={() => setX((v) => Math.max(0, v - 1))}>−</button><b data-testid="x-value">X = {x}</b><button class="btn" onClick={() => setX((v) => v + 1)}>+</button></div>
-            <div class="row">{cancel}<button class="btn primary" onClick={() => setIntent({ ...intent, x })} data-tip="Use this value of X." data-testid="x-done">Done</button></div>
-          </div>
-        );
-        case 'target': return (
-          <div class="prompt">
-            <p><b>{name}</b>: choose {need.text}{need.count > 1 ? ` (${picking.length}/${need.count})` : ''}</p>
-            <div class="chips-row">
-              {need.legal.map((t) => (
-                <button key={t} class={`btn chipbtn ${picking.includes(t) ? 'on' : ''}`} onClick={() => pickTarget(t)} data-testid={`target-${t === 'p1' || t === 'p2' ? t : nameOf(s, t)}`}>
-                  {t === 'p1' || t === 'p2' ? playerName(s, t) : `${nameOf(s, t)}${s.objects[t]!.controller !== actor ? ` (${playerName(s, s.objects[t]!.controller)})` : ''}`}
-                </button>
-              ))}
-            </div>
-            <div class="row">{cancel}{need.upTo && <button class="btn primary" onClick={() => { setIntent({ ...intent, targets: [...intent.targets, picking] }); setPicking([]); }}>Done</button>}</div>
-          </div>
-        );
-        case 'tap': return (
-          <div class="prompt">
-            <p><b>{name}</b>: tap an untapped creature you control</p>
-            <div class="chips-row">{need.options.map((id) => <button key={id} class="btn chipbtn" onClick={() => setIntent({ ...intent, tapping: [id] })}>{nameOf(s, id)}</button>)}</div>
-            <div class="row">{cancel}</div>
-          </div>
-        );
-        case 'confirm': {
-          if (plainPayment) return null; // it goes straight on the stack (above)
-          const printed = s.setup.cards[s.objects[intent.object]!.card]!;
-          const cost = intent.kind === 'cast' ? (s.objects[intent.object]!.airbended ? '{2}' : formatCost(printed.manaCost, intent.x ?? 0))
-            : printed.script?.activated?.[intent.ability ?? 0]?.text.split(':')[0] ?? '';
-          return (
-            <div class="prompt">
-              <p><b>{intent.kind === 'cast' ? `Cast ${name}` : `Activate ${name}`}</b>{intent.targets.flat().length > 0 && <span> · target {intent.targets.flat().map((t) => (t === 'p1' || t === 'p2' ? playerName(s, t) : nameOf(s, t))).join(', ')}</span>}</p>
-              <p class="dim">Cost {cost || 'none'}{preview ? ` · taps ${preview.tapped.map((id) => nameOf(s, id)).join(', ') || 'nothing'}${preview.floating ? ` · ${preview.floating} floating` : ''}` : ' · not enough mana'}</p>
-              <div class="row">
-                {cancel}<button class="btn primary" onClick={() => send(toChoice(intent))} data-tip="Pay the cost with the outlined sources and put it on the stack." data-testid="confirm">{intent.kind === 'cast' ? 'Cast' : 'Activate'}</button>
-              </div>
-            </div>
-          );
-        }
-      }
-    }
-    switch (d.kind) {
-      case 'mulligan': return (
-        <div class="prompt">
-          <p>{s.players[d.player].mulligans ? `Mulligan ${s.players[d.player].mulligans}: ` : ''}Keep this hand?</p>
-          <div class="row"><button class="btn" onClick={() => send({ kind: 'mulligan' })} data-tip="Shuffle and draw seven again; then put one card on the bottom for each mulligan (London mulligan)." data-testid="mulligan">Mulligan</button><button class="btn primary" onClick={() => send({ kind: 'keep' })} data-tip="Keep this hand." data-testid="keep">Keep</button></div>
-        </div>
-      );
-      case 'bottom': case 'discard': case 'discardEffect': return (
-        <div class="prompt">
-          <p>{d.kind === 'bottom' ? `Choose ${d.count} card${d.count > 1 ? 's' : ''} to put on the bottom` : `Choose ${d.count} card${d.count > 1 ? 's' : ''} to discard`} ({chosen.length}/{d.count})</p>
-          <div class="row"><button class="btn primary" disabled={chosen.length !== d.count} onClick={() => send({ kind: d.kind === 'bottom' ? 'bottom' : 'discard', cards: chosen } as Choice)} data-testid="done">Done</button></div>
-        </div>
-      );
-      case 'attackers': return (
-        <div class="prompt">
-          <p>Tap creatures to attack {playerName(s, other(d.player))}.</p>
-          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'attack', attackers: [...atk] })} data-tip="Attack with the creatures you tapped on; with none, skip combat." data-testid="attack">{atk.size ? `Attack with ${atk.size}` : 'No attack'}</button></div>
-        </div>
-      );
-      case 'blockers': return (
-        <div class="prompt">
-          <p>{armed ? `${nameOf(s, armed)} blocks: tap the attacker` : 'Tap a creature to block with, then the attacker.'}</p>
-          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'block', blocks: [...blocks].map(([blocker, attacker]) => ({ blocker, attacker })) })} data-tip="Declare these blocks; with none, take the damage." data-testid="block">{blocks.size ? `Block with ${blocks.size}` : 'No blocks'}</button></div>
-        </div>
-      );
-      case 'damage': {
-        const keys = [...d.blockers, ...(d.trample ? ['player'] : [])];
-        const total = keys.reduce((n, k) => n + (split[k] ?? 0), 0);
-        return (
-          <div class="prompt">
-            <p>Divide {nameOf(s, d.attacker)}'s {d.power} damage ({total}/{d.power})</p>
-            {keys.map((k) => (
-              <div key={k} class="row stepper">
-                <span>{k === 'player' ? playerName(s, other(d.player)) : nameOf(s, k)}</span>
-                <button class="btn" onClick={() => setSplit((v) => ({ ...v, [k]: Math.max(0, (v[k] ?? 0) - 1) }))}>−</button>
-                <b>{split[k] ?? 0}</b>
-                <button class="btn" onClick={() => setSplit((v) => ({ ...v, [k]: (v[k] ?? 0) + 1 }))}>+</button>
-              </div>
-            ))}
-            <div class="row"><button class="btn primary" onClick={() => send({ kind: 'damage', assign: split as Record<ObjectId | 'player', number> })}>Done</button></div>
-          </div>
-        );
-      }
-      case 'legend': return (
-        <div class="prompt">
-          <p>Legend rule: choose the {d.name} to keep.</p>
-          <div class="row"><button class="btn primary" disabled={!chosen.length} onClick={() => send({ kind: 'legend', keep: chosen[0]! })}>Keep</button></div>
-        </div>
-      );
-      case 'triggerOrder': return (
-        <div class="prompt">
-          <p>{playerName(s, d.player)}: order your triggers. The one on the left resolves first.</p>
-          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'order', triggers: [...order].reverse() })} data-tip="Put the triggers on the stack in this order: the left one resolves first." data-testid="accept-order">Accept order</button></div>
-        </div>
-      );
-      case 'triggerTargets': {
-        const t = s.pendingTriggers[d.trigger]!;
-        const opts = triggerTargetOptions(s);
-        const spec = opts[picking.length];
-        return (
-          <div class="prompt">
-            <p><b>{t.sourceName}</b>: {triggeredAbility(s, t.card, t.index).text}</p>
-            <p class="dim">Choose a target{opts.length > 1 ? ` (${picking.length + 1}/${opts.length})` : ''}.</p>
-            <div class="chips-row">{(spec?.legal ?? []).map((x) => <button key={x} class="btn chipbtn" onClick={() => onPick(x)}>{x === 'p1' || x === 'p2' ? playerName(s, x) : nameOf(s, x)}</button>)}</div>
-          </div>
-        );
-      }
-      case 'may': return (
-        <div class="prompt">
-          <p>You may: {d.text}</p>
-          <div class="row"><button class="btn" onClick={() => send({ kind: 'no' })} data-testid="no">No</button><button class="btn primary" onClick={() => send({ kind: 'yes' })} data-testid="yes">Yes</button></div>
-        </div>
-      );
-      case 'payOrElse': return (
-        <div class="prompt">
-          <p>Pay {d.cost}{d.waterbend ? `waterbend {${d.waterbend}}` : ''}? If you don't: {d.otherwise}.</p>
-          <div class="row"><button class="btn" onClick={() => send({ kind: 'no' })} data-testid="no">Don't pay</button><button class="btn primary" onClick={() => send({ kind: 'yes' })} data-testid="yes">Pay</button></div>
-        </div>
-      );
-      case 'chooseColor': return (
-        <div class="prompt">
-          <p>Choose a colour for {nameOf(s, d.object)}</p>
-          <div class="row">{d.options.map((c: Color) => <button key={c} class={`btn pipbtn ${c}`} onClick={() => send({ kind: 'color', color: c })}>{c}</button>)}</div>
-        </div>
-      );
-      case 'arrange': return (
-        <div class="prompt">
-          <p>{d.to === 'bottom' ? 'Scry' : 'Surveil'} {d.cards.length}: tap a card to put it {d.to === 'bottom' ? 'on the bottom' : 'into your graveyard'}.</p>
-          <CardList s={s} ids={d.cards} selectable={new Set(d.cards)} selected={new Set(chosen)} onPick={(id) => toggleChosen(id, d.cards.length)} />
-          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'arrange', top: d.cards.filter((c) => !chosen.includes(c)), away: chosen })} data-testid="done">Done</button></div>
-        </div>
-      );
-      case 'search': return (
-        <div class="prompt tall">
-          <p>Search: choose up to {d.max}.</p>
-          <CardList s={s} ids={d.options} selectable={new Set(d.options)} selected={new Set(chosen)} onPick={(id) => toggleChosen(id, d.max)} />
-          <div class="row"><button class="btn primary" onClick={() => send({ kind: 'search', cards: chosen })} data-testid="done">{chosen.length ? 'Take' : 'Find nothing'}</button></div>
-        </div>
-      );
-      case 'pick': return (
-        <div class="prompt">
-          <p>{d.text}</p>
-          <CardList s={s} ids={d.from} selectable={new Set(d.options)} selected={new Set(chosen)} onPick={(id) => toggleChosen(id, d.max)} />
-          <div class="row"><button class="btn primary" disabled={chosen.length < d.min} onClick={() => send({ kind: 'pick', cards: chosen })} data-testid="done">{chosen.length ? 'Done' : 'None'}</button></div>
-        </div>
-      );
-      case 'optionalCost': return (
-        <div class="prompt">
-          <p>You may {d.pay} {d.count > 1 ? `${d.count} cards` : d.pay === 'sacrifice' ? 'a permanent' : 'a card'}.</p>
-          {d.pay === 'sacrifice' && <CardList s={s} ids={d.options} selectable={new Set(d.options)} selected={new Set(chosen)} onPick={(id) => toggleChosen(id, d.count)} />}
-          <div class="row"><button class="btn" onClick={() => send({ kind: 'optionalCost', objects: [] })} data-testid="no">Don't</button><button class="btn primary" disabled={chosen.length !== d.count} onClick={() => send({ kind: 'optionalCost', objects: chosen })} data-testid="yes">{d.pay === 'sacrifice' ? 'Sacrifice' : 'Discard'}</button></div>
-        </div>
-      );
-      case 'priority': return null;
-    }
-  }
-
-  function renderFooter() {
-    if (!d) {
-      const r = s.result;
-      return (
-        <div class="foot">
-          <span class="say"><b>{r?.winner ? `${playerName(s, r.winner)} wins` : 'A draw'}</b> · {r?.reason}</span>
-          {menuButton}
-          <button class="btn" onClick={() => onRematch(r?.winner ? other(r.winner) : 'p1')} data-tip="Play again with the same decks; the loser chooses to play or draw." data-testid="rematch">Rematch</button>
-          <button class="btn primary" onClick={onExit} data-testid="home">Home</button>
-        </div>
-      );
-    }
-    if (off && actor) {
-      return (
-        <div class={`foot handoff ${actor}`} data-testid="handoff">
-          <span class="say"><b class={`who ${actor}`}>{playerName(s, actor)} to act</b>: {asking(s)}</span>
-          {menuButton}
-          {canUndo(session.game) && <button class={undoClass} onClick={askUndo} aria-label={undoWords} data-tip="Take back the last decision. Taking back the other player's asks first." data-testid="bar-undo">{undoLabel}</button>}
-          {d.kind === 'priority' && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="bar-pass-ahead">»</button>}
-          {d.kind === 'priority' && <button class="btn" onClick={() => send({ kind: 'pass' }, { fromBar: true })} data-tip="Pass without showing your hand. Nothing flips." aria-label="Pass" data-testid="bar-pass">›</button>}
-          <button class="btn primary" onClick={takeLook} data-tip="Take the phone and show your hand, to act." data-testid="look">Look</button>
-        </div>
-      );
-    }
-    return (
-      <div class={`foot ${d.player}`}>
-        <span class="say">{d.kind === 'priority' && !intent ? <>Pass: <b>{passMeaning(s)}</b></> : <b>{playerName(s, d.player)}</b>}</span>
-        {menuButton}
-        <button class={undoClass} disabled={!canUndo(session.game)} onClick={askUndo} aria-label={undoWords} data-tip="Take back the last decision, with the automatic passes after it." data-testid="undo">{undoLabel}</button>
-        {d.kind === 'priority' && !intent && <button class="btn" onClick={() => setMenu('ahead')} data-tip="Pass this combat, or until end of turn, out loud: both players see it. It ends if the other player plays something." data-testid="pass-ahead">»</button>}
-        {d.kind === 'priority' && !intent && <button class="btn primary" onClick={() => send({ kind: 'pass' })} data-tip={`Pass priority: ${passMeaning(s)}.`} aria-label="Pass" data-testid="pass">›</button>}
-      </div>
-    );
-  }
+  // ----- the prompt panel
+  const answering: Answering = { chosen, toggleChosen, atk, blocks, armed, split, setSplit, order, picking, onPick };
+  const prompt = off || !d ? null
+    : intent && need && actor ? <IntentPrompt {...{ s, actor, intent, need, setIntent, picking, setPicking, pickTarget, modes, setModes, x, setX, preview, plainPayment, send, confirm: toChoice(intent) }} />
+    : <DecisionPrompt s={s} d={d} a={answering} send={send} />;
 
   const orderBand = !off && d?.kind === 'triggerOrder' ? (
     <div class="ordering">
@@ -597,7 +290,9 @@ export function GameScreen({ session, onChange, onExit, onRematch }: {
         </div>
       )}
       {prompt}
-      {footer}
+      <Footer s={s} handoffTo={off ? actor : null} casting={!!intent} canUndo={canUndo(session.game)} lastManual={lastManual}
+        onMenu={() => setMenu('menu')} onUndo={askUndo} onPassAhead={() => setMenu('ahead')} onPass={(fromBar) => send({ kind: 'pass' }, fromBar ? { fromBar } : {})}
+        onLook={takeLook} onRematch={onRematch} onExit={onExit} />
       {toast && <div class="toast" data-testid="toast" onClick={() => setToast(null)}>{toast}</div>}
       {viewing && viewAt !== null && states[viewAt]?.objects[viewing] && (
         <CardView s={states[viewAt]!} id={viewing} actor={null} siblings={[viewing]} onAction={() => undefined} onNavigate={(id) => view(id, viewAt)} onClose={() => setViewing(null)} />

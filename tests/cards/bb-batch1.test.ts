@@ -83,9 +83,9 @@ describe('Beginner Box, batch 1', () => {
     const { s, ids } = board({ p1: lands(2, 'Swamp'), hand1: ['Corrupt Court Official'], hand2: ['Gilacorn'] });
     const hand = s.zones['p2.hand'].length;
     let after = passBoth(act(s, { kind: 'cast', object: ids.hand1[0]! }));
-    after = passUntil(after, (x) => x.decision?.kind === 'discardEffect');
-    expect(after.decision).toMatchObject({ kind: 'discardEffect', player: 'p2', count: 1 }); // Claire chooses
-    after = settle(act(after, { kind: 'discard', cards: [ids.hand2[0]!] }));
+    after = passUntil(after, (x) => x.decision?.kind === 'pick');
+    expect(after.decision).toMatchObject({ kind: 'pick', player: 'p2', min: 1, max: 1 }); // Claire chooses
+    after = settle(act(after, { kind: 'pick', cards: [ids.hand2[0]!] }));
     expect(after.zones['p2.hand']).toHaveLength(hand - 1);
   });
 
@@ -187,8 +187,8 @@ describe('Beginner Box, batch 1', () => {
     s = act(act(s, { kind: 'cast', object: ids.hand1[0]! }), { kind: 'pass' });
     const spell = s.zones.stack[0]!;
     s = passBoth(act(s, { kind: 'cast', object: ids.hand2[0]!, targets: [[spell]] }));
-    s = passUntil(s, (x) => x.decision?.kind === 'discardEffect');
-    s = settle(act(s, { kind: 'discard', cards: [s.zones['p2.hand'][0]!] }));
+    s = passUntil(s, (x) => x.decision?.kind === 'pick');
+    s = settle(act(s, { kind: 'pick', cards: [s.zones['p2.hand'][0]!] }));
     expect(named(s, 'Capital Guard')).toHaveLength(0);
     expect(s.zones['p1.graveyard']).toHaveLength(1);
   });

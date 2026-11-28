@@ -186,16 +186,17 @@ export type Decision =
   | { kind: 'triggerOrder'; player: PlayerId; triggers: number[] }
   | { kind: 'triggerTargets'; player: PlayerId; trigger: number }
   | { kind: 'may'; player: PlayerId; text: string }
-  | { kind: 'discardEffect'; player: PlayerId; count: number }
   | { kind: 'chooseColor'; player: PlayerId; object: ObjectId; options: Color[] }
   | { kind: 'arrange'; player: PlayerId; cards: ObjectId[]; to: 'bottom' | 'graveyard' }
-  | { kind: 'search'; player: PlayerId; options: ObjectId[]; max: number }
-  /** "You may sacrifice / discard …": pick what to pay with, or nothing to decline. */
-  | { kind: 'optionalCost'; player: PlayerId; pay: 'sacrifice' | 'discard'; options: ObjectId[]; count: number }
   /** "… unless … pays": yes pays the cost; no lets `otherwise` happen. */
   | { kind: 'payOrElse'; player: PlayerId; cost: string; waterbend?: number; otherwise: string }
-  /** Choose among cards shown (`from`, all visible to the chooser): between `min` and `max` of `options`. */
-  | { kind: 'pick'; player: PlayerId; from: ObjectId[]; options: ObjectId[]; min: number; max: number; text: string };
+  /**
+   * The general card choice that effects ask: between `min` and `max` of `options`, among the cards
+   * shown (`from`, all visible to the chooser), or (`orNone`) none at all. `done` and `none` label
+   * the answer with and without cards ("Sacrifice", "Don't"). Discards, searches, optional costs
+   * and looks at the library all ask this, so a mechanic that chooses cards needs no new prompt.
+   */
+  | { kind: 'pick'; player: PlayerId; from: ObjectId[]; options: ObjectId[]; min: number; max: number; orNone?: boolean; text: string; done?: string; none?: string };
 
 export type Choice =
   | { kind: 'keep' }
@@ -213,9 +214,7 @@ export type Choice =
   | { kind: 'color'; color: Color }
   /** Scry or surveil: the cards kept on top, top first, and the ones moved away. */
   | { kind: 'arrange'; top: ObjectId[]; away: ObjectId[] }
-  | { kind: 'search'; cards: ObjectId[] }
   | { kind: 'pick'; cards: ObjectId[] }
-  | { kind: 'optionalCost'; objects: ObjectId[] }
   | { kind: 'yes' }
   | { kind: 'no' }
   | { kind: 'attack'; attackers: ObjectId[] }

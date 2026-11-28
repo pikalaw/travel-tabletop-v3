@@ -6,7 +6,8 @@
  * The vocabulary starts with what the generic rules need (M2) and grows one tested building block
  * at a time as cards need them (M4). A card that needs something new adds it here, never a one-off.
  */
-import type { Color, PlayerId, Step } from './types';
+import type { Effect } from './effects';
+import type { Color, Step } from './types';
 
 // ----- Which objects and players --------------------------------------------------------------
 
@@ -87,70 +88,8 @@ export type Duration = 'endOfTurn' | 'endOfCombat' | 'permanent';
 
 // ----- Effects ---------------------------------------------------------------------------------
 
-export type Effect =
-  | { draw: PlayerRef; n: Amount }
-  | { discard: PlayerRef; n: Amount }
-  /** `gainExcess`: "You gain life equal to the excess damage dealt this way" (120.4a). */
-  | { damage: Amount; to: ObjectRef | PlayerRef; from?: ObjectRef; gainExcess?: boolean }
-  | { gainLife: PlayerRef; n: Amount }
-  | { loseLife: PlayerRef; n: Amount }
-  | { addCounters: string; n: Amount; on: ObjectRef }
-  | { removeCounters: string; n: Amount; on: ObjectRef }
-  /** "Remove up to N counters from it": the most of any kinds, +1/+1 first (the controller's choice; the pool's one use is a removal spell). */
-  | { removeAnyCounters: number; on: ObjectRef }
-  | { pump: ObjectRef; power: Amount; toughness: Amount; duration: Duration }
-  /** Any continuous effect on these objects for a duration: "loses all abilities and is 1/1 until end of turn". */
-  | { continuous: Omit<Continuous, 'affects'>; on: ObjectRef; duration: Duration }
-  | { exileIfWouldDie: ObjectRef; duration: Duration }
-  | { grant: ObjectRef; keywords: string[]; duration: Duration }
-  | { destroy: ObjectRef }
-  | { exile: ObjectRef }
-  | { bounce: ObjectRef }
-  | { tap: ObjectRef }
-  | { untap: ObjectRef }
-  | { sacrifice: ObjectRef }
-  | { createToken: string; n: Amount; controller?: PlayerRef; tapped?: boolean; attacking?: boolean }
-  | { addMana: (Color | 'C')[]; n?: Amount; anyColor?: boolean; untilEndOfCombat?: boolean; orChosenColor?: boolean }
-  /** Earthbend N (701.65): the target land becomes a 0/0 creature with haste that's still a land, gets N +1/+1 counters, and returns tapped when it dies or is exiled. */
-  | { earthbend: Amount; on: ObjectRef }
-  /** Airbend (701.66): exile it; while exiled, its owner may cast it for {2}. A token airbended ceases to exist. */
-  | { airbend: ObjectRef }
-  | { returnToBattlefield: ObjectRef; tapped?: boolean }
-  /** Attach this Aura or Equipment to an object (701.3). */
-  | { attach: ObjectRef }
-  /** "Its owner shuffles it into their library." */
-  | { shuffleIntoLibrary: ObjectRef }
-  | { mill: PlayerRef; n: Amount }
-  /** "Put its counters on …": every counter the object had, as it last existed. */
-  | { putCountersOf: ObjectRef; on: ObjectRef }
-  /**
-   * Look at the top N of your library and you may put a matching card into your hand; the rest go
-   * to the bottom in a random order, or (mill) all go to the graveyard first. `otherwise` runs if
-   * none was taken ("If you don't, put a +1/+1 counter on this creature").
-   */
-  | { lookAtTop: Amount; mayTake: Filter; rest: 'bottomRandom' | 'mill'; otherwise?: Effect[] }
-  /** "Target opponent reveals their hand. You choose a … card from it. That player discards that card." */
-  | { revealAndDiscard: PlayerRef; choose: Filter }
-  /** "Exile the top card of your library. You may play that card this turn." */
-  | { exileTopPlayable: true }
-  /** "… unless you pay / waterbend …": the controller may pay; if they don't, the effects run. */
-  | { unlessPays: { mana?: string; waterbend?: number }; then: Effect[] }
-  /** Scry N or surveil N (701.22, 701.25): look at the top N, then put any on the bottom (scry) or into the graveyard (surveil). */
-  | { scry: Amount }
-  | { surveil: Amount }
-  /** Search your library for up to `n` cards matching the filter, put them somewhere, then shuffle (701.23). */
-  | { search: Filter; n?: number; to: 'hand' | 'battlefield'; tapped?: boolean }
-  /** "You may play an additional land this turn." */
-  | { extraLand: number }
-  /** "You may sacrifice a creature or artifact. If you do, …" / "You may discard a card. If you do, …" */
-  | { optional: { sacrifice?: Filter; discard?: number }; then: Effect[] }
-  /** Each deals damage equal to its power to the other (701.14). */
-  | { fight: [ObjectRef, ObjectRef] }
-  /** "Counter target spell unless its controller pays {2}." */
-  | { counterUnlessPays: string; on: ObjectRef }
-  | { counterSpell: ObjectRef }
-  | { may: Effect[] }
-  | { if: Condition; then: Effect[]; else?: Effect[] };
+/** What spells and abilities do: one module per mechanic, in ./effects. */
+export type { Effect } from './effects';
 
 /** What may be targeted: a filter over objects, or players. */
 export type TargetSpec =
@@ -281,7 +220,3 @@ export interface CardScript {
   triggered?: TriggeredAbility[];
   activated?: ActivatedAbility[];
 }
-
-/** Players referred to by a script, resolved against the controller. */
-export const resolvePlayer = (ref: 'you' | 'opponent', controller: PlayerId): PlayerId =>
-  ref === 'you' ? controller : controller === 'p1' ? 'p2' : 'p1';

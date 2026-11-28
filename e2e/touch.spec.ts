@@ -94,7 +94,7 @@ async function longPress(page: Page, l: ReturnType<Page['locator']>, ms = 700) {
   await page.waitForTimeout(300);
 }
 
-test('a long press on any card opens its full view; the log icon opens and closes the log', async ({ page }) => {
+test('a long press on any card opens its full view; the menu opens the log and its ✕ closes it', async ({ page }) => {
   await toLawrencesTurn(page);
   // in hand: the view opens, and nothing is cast or played
   const hand = await page.locator('.hand .card').count();

@@ -10,8 +10,3 @@ export function printing(id: string): CardPrinting {
   if (!card) throw new Error(`no card with id ${id} in the pool`);
   return card;
 }
-
-/** The URL of a printing's image, under the app's base path. */
-export function imageUrl(card: CardPrinting): string {
-  return `${import.meta.env.BASE_URL}cards/${card.image}`;
-}

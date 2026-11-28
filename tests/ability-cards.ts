@@ -30,7 +30,7 @@ export const ABILITY_CARDS: Record<string, Printed> = {
   burnout: card('Burn Out', '{1}{R}', 'Instant', { spell: { targets: [{ objects: { types: ['Creature'] } }], effects: [{ exileIfWouldDie: { target: 0 }, duration: 'endOfTurn' }, { damage: 3, to: { target: 0 } }] } }),
   stunner: card('Stun Shot', '{U}', 'Instant', { spell: { targets: [{ objects: { types: ['Creature'] } }], effects: [{ tap: { target: 0 } }, { addCounters: 'stun', n: 1, on: { target: 0 } }] } }),
   rally: card('Rally', '{W}', 'Instant', { spell: { effects: [{ createToken: 'soldierToken', n: 2 }] } }),
-  musing: card('Musing', '{U}', 'Sorcery', { spell: { effects: [{ may: [{ draw: 'you', n: 2 }, { discard: 'you', n: 1 }] }] } }),
+  musing: card('Musing', '{U}', 'Sorcery', { spell: { effects: [{ may: [{ draw: 'you', n: 2 }, { discard: 'you', n: 1 }], text: 'draw two cards, then discard a card' }] } }),
   // Permanents with static abilities.
   anthem: card('Glorious Anthem', '{1}{W}{W}', 'Enchantment', { statics: [{ effect: { affects: { all: { types: ['Creature'], controller: 'you' } }, modify: [1, 1] }, text: 'Creatures you control get +1/+1.' }] }),
   lord: card('Sky Lord', '{2}{W}', 'Creature — Bird', { statics: [{ effect: { affects: { all: { types: ['Creature'], controller: 'you', other: true } }, addKeywords: ['flying'] }, text: 'Other creatures you control have flying.' }] }, [1, 1]),

@@ -2,6 +2,7 @@
  * Low-level state operations. The engine works on a private copy of the state (see engine.ts), so
  * these functions mutate it; nothing outside the engine ever sees a state mid-step.
  */
+import type { ActivatedAbility, SpellAbility } from './abilities';
 import { nextInt, shuffle as shuffleWith } from './rng';
 import { fire } from './triggers';
 import type { CardId, GameObject, GameState, ObjectId, PlayerId, Printed, ZoneId } from './types';
@@ -13,6 +14,10 @@ export function obj(s: GameState, id: ObjectId): GameObject {
   if (!o) throw new Error(`no object ${id}`);
   return o;
 }
+
+/** A card's activated abilities and spell ability, from its script. */
+export const activatedOf = (s: GameState, id: ObjectId): ActivatedAbility[] => s.setup.cards[obj(s, id).card]?.script?.activated ?? [];
+export const spellOf = (s: GameState, id: ObjectId): SpellAbility | undefined => s.setup.cards[obj(s, id).card]?.script?.spell;
 
 export function printed(s: GameState, o: GameObject): Printed {
   const p = s.setup.cards[o.card];

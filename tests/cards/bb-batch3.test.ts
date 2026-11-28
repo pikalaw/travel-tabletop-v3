@@ -58,8 +58,8 @@ describe('Beginner Box, batch 3', () => {
     let { s, ids } = board({ p1: lands(2), hand1: ['Mongoose Lizard'] });
     // Lawrence's library is all Plains: no Mountain to find.
     s = passBoth(act(s, { kind: 'activate', object: ids.hand1[0]!, ability: 0 }));
-    expect(s.decision).toEqual({ kind: 'search', player: 'p1', options: [], max: 1 });
-    s = settle(act(s, { kind: 'search', cards: [] }));
+    expect(s.decision).toMatchObject({ kind: 'pick', player: 'p1', options: [], min: 0, max: 1 });
+    s = settle(act(s, { kind: 'pick', cards: [] }));
     expect(s.zones['p1.graveyard'].map((id) => s.objects[id]!.card)).toEqual([idOf('Mongoose Lizard')]);
     const cast = board({ p1: lands(6), hand1: ['Mongoose Lizard'] });
     let c = passBoth(act(cast.s, { kind: 'cast', object: cast.ids.hand1[0]! }));
@@ -75,7 +75,7 @@ describe('Beginner Box, batch 3', () => {
     const options = (s.decision as { options: string[] }).options;
     expect(options.length).toBeGreaterThan(10);
     const hand = s.zones['p2.hand'].length;
-    s = act(s, { kind: 'search', cards: [options[0]!] });
+    s = act(s, { kind: 'pick', cards: [options[0]!] });
     expect(s.zones['p2.hand']).toHaveLength(hand + 1);
   });
 

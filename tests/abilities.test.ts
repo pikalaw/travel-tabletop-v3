@@ -57,11 +57,11 @@ describe('spells with effects and targets (601, 608)', () => {
   it('a "may" asks; yes runs the rest, including a discard choice', () => {
     let { s, ids } = position(['island'], [], ['musing']);
     s = passBoth(act(s, { kind: 'cast', object: ids.h1![0]! }));
-    expect(s.decision).toEqual({ kind: 'may', player: 'p1', text: 'draw, discard' });
+    expect(s.decision).toEqual({ kind: 'may', player: 'p1', text: 'draw two cards, then discard a card' });
     s = act(s, { kind: 'yes' });
-    expect(s.decision).toMatchObject({ kind: 'discardEffect', player: 'p1', count: 1 });
+    expect(s.decision).toMatchObject({ kind: 'pick', player: 'p1', min: 1, max: 1 });
     const hand = s.zones['p1.hand'];
-    s = act(s, { kind: 'discard', cards: [hand[0]!] });
+    s = act(s, { kind: 'pick', cards: [hand[0]!] });
     expect(s.zones['p1.hand']).toHaveLength(hand.length - 1);
     expect(s.decision).toEqual({ kind: 'priority', player: 'p1' });
   });
