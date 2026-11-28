@@ -5,10 +5,10 @@
  */
 import type { Effect } from './abilities';
 import { characteristics, isType, summoningSick, view } from './characteristics';
-import { amount, holds, matches, type Context } from './evaluate';
+import { amount, holds, matches, select, type Context } from './evaluate';
 import { manaValue, parseCost, solvePayment, type ManaSource } from './mana';
 import { activatedOf, controlledBy, event, obj, printed, spellOf } from './state';
-import type { Choice, Color, GameState, ManaSymbol, ObjectId, PlayerId } from './types';
+import type { Choice, Color, GameState, ManaSymbol, ObjectId, PlayerId, Target } from './types';
 import { COLORS } from './types';
 import { costReduction } from './costs';
 import { tap } from './zones';
@@ -169,7 +169,7 @@ export function pay(s: GameState, p: PlayerId, sources: string[]): void {
  * The payment for casting a card now: its mana cost, or {2} from airbending exile (701.66), plus any
  * additional cost: a waterbend, or the mana of the additional-cost option chosen (`option`).
  */
-export function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0, option?: number) {
+export function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0, option?: number, targets?: Target[][]) {
   const o = obj(s, id);
   // Another player's exiled card cast by permission: free, or by waterbending its mana value (Hama).
   if (o.castableBy?.player === p && o.zone.endsWith('.exile')) {
@@ -182,6 +182,13 @@ export function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0, opt
   const extra = spell?.additionalCost;
   // 601.2f: reductions, the spell's own and static abilities', take off generic mana only.
   let off = (spell?.reduceBy !== undefined ? amount(s, view(s), spell.reduceBy, { controller: p, source: id }) : 0) + costReduction(s, p, id);
+  // "Costs {1} less if it targets a creature with flying": with the targets chosen, or (before they are) if one could be.
+  const r = spell?.reduceIfTargets;
+  if (r) {
+    const ctx = { controller: p, source: id };
+    const could = targets ? targets.flat().filter((t) => s.objects[t]).map((t) => s.objects[t]!) : select(s, view(s), r.filter, ctx);
+    if (could.some((o) => matches(s, view(s), o, r.filter, ctx))) off += r.by;
+  }
   const reduced = cost.map((m): ManaSymbol => { if (m.kind !== 'generic' || off <= 0) return m; const take = Math.min(off, m.amount); off -= take; return { kind: 'generic', amount: m.amount - take }; });
   const chosen = option !== undefined ? spell?.costOptions?.[option]?.cost : undefined;
   const extraMana = [extra?.mana, chosen?.mana].filter((m): m is string => !!m);
@@ -211,7 +218,7 @@ export function riderCounters(s: GameState, sources: string[], spell: ObjectId):
  */
 export function paymentPreview(s: GameState, p: PlayerId, c: Choice): { tapped: ObjectId[]; floating: number; converted: boolean } | null {
   let pay: { sources: string[] } | null = null;
-  if (c.kind === 'cast') pay = s.objects[c.object] ? spellPayment(s, p, c.object, c.x ?? 0, c.cost) : null;
+  if (c.kind === 'cast') pay = s.objects[c.object] ? spellPayment(s, p, c.object, c.x ?? 0, c.cost, c.targets) : null;
   else if (c.kind === 'activate') {
     const a = s.objects[c.object] ? activatedOf(s, c.object)[c.ability] : undefined;
     if (!a) return null;

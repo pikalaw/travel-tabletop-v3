@@ -133,6 +133,9 @@ export function fire(s: GameState, ev: GameEventKind): void {
       if (!consider(t, ctx, t.self)) continue;
       // "Whenever one or more …": the events that happen at once make one trigger.
       if (t.oneOrMore && s.pendingTriggers.some((p) => p.source === o.id && p.index === index)) continue;
+      // "This ability triggers only once each turn."
+      const once = `trigger:${o.id}:${index}`;
+      if (t.oncePerTurn) { if (s.activatedThisTurn[once]) continue; s.activatedThisTurn[once] = 1; }
       s.pendingTriggers.push({ controller: o.controller, source: o.id, sourceName: v(o).name, card: o.card, index, ...about, ...amount });
     }
   }

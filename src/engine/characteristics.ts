@@ -99,7 +99,8 @@ export function computeAll(s: GameState): Map<ObjectId, Characteristics> {
 
 function compute(s: GameState): Map<ObjectId, Characteristics> {
   const map = new Map<ObjectId, Characteristics>();
-  for (const id of s.zones.battlefield) map.set(id, printedChars(s, s.objects[id]!));
+  // Permanents, and spells on the stack ("Lesson spells you control have lifelink").
+  for (const id of [...s.zones.battlefield, ...s.zones.stack]) if (!s.objects[id]!.ability) map.set(id, printedChars(s, s.objects[id]!));
   const view: View = (o) => map.get(o.id) ?? printedChars(s, o);
   const removed = removedAbilities(s, view);
   const effects = effectsInForce(s, removed);

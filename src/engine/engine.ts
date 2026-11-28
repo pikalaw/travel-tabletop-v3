@@ -26,7 +26,7 @@ const STARTING_LIFE = 20;
 const PERMANENT_TYPES = ['Creature', 'Artifact', 'Enchantment', 'Planeswalker', 'Battle'];
 
 const playerName = (s: GameState, p: PlayerId) => s.setup.players[p].name;
-const freshTurnLog = (): GameState['turnLog'] => ({ attacked: { p1: false, p2: false }, lifeLost: { p1: 0, p2: 0 }, drawn: { p1: 0, p2: 0 }, tapped: {}, landsEntered: { p1: 0, p2: 0 }, creatureSpells: { p1: 0, p2: 0 } });
+const freshTurnLog = (): GameState['turnLog'] => ({ attacked: { p1: false, p2: false }, lifeLost: { p1: 0, p2: 0 }, drawn: { p1: 0, p2: 0 }, tapped: {}, landsEntered: { p1: 0, p2: 0 }, creatureSpells: { p1: 0, p2: 0 }, discarded: { p1: 0, p2: 0 }, sacrificed: { p1: 0, p2: 0 }, creaturesLeft: { p1: 0, p2: 0 } });
 const nameOf = (s: GameState, id: ObjectId) => characteristics(s, obj(s, id)).name;
 const ctxFor = (p: PlayerId, source: ObjectId): Context => ({ controller: p, source });
 const hand = (s: GameState, p: PlayerId) => s.zones[zoneOf(p, 'hand')];
@@ -150,9 +150,9 @@ export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Ta
   const options = spell?.costOptions;
   if (options) {
     if (option !== undefined && !options[option]) return 'No such cost';
-    const why = (i: number) => costProblem(s, p, id, x, i, sacrificing, discarding);
+    const why = (i: number) => costProblem(s, p, id, x, i, sacrificing, discarding, targets);
     if (option !== undefined) { const bad = why(option); if (bad) return bad; } else if (options.every((_, i) => why(i))) return why(0);
-  } else { const bad = costProblem(s, p, id, x, undefined, sacrificing, discarding); if (bad) return bad; }
+  } else { const bad = costProblem(s, p, id, x, undefined, sacrificing, discarding, targets); if (bad) return bad; }
   if (spell?.modes && targets === undefined) {
     // Castable if enough modes could each be chosen with legal targets.
     const ok = spell.modes.options.filter((m) => hasTargets(s, m.targets ?? [], ctxFor(p, id))).length;
@@ -166,8 +166,8 @@ export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Ta
 }
 
 /** Why this spell's costs can't be paid now (with additional-cost option `option`, and these choices, if made), or null. */
-function costProblem(s: GameState, p: PlayerId, id: ObjectId, x: number, option?: number, sacrificing?: ObjectId[], discarding?: ObjectId[]): string | null {
-  if (!spellPayment(s, p, id, x, option)) return 'Not enough mana of the right colours';
+function costProblem(s: GameState, p: PlayerId, id: ObjectId, x: number, option?: number, sacrificing?: ObjectId[], discarding?: ObjectId[], targets?: Target[][]): string | null {
+  if (!spellPayment(s, p, id, x, option, targets)) return 'Not enough mana of the right colours';
   return costChoiceProblem(costChoices(s, p, castCost(s, id, option), id), sacrificing, discarding);
 }
 
@@ -197,6 +197,7 @@ export function whyNotActivate(s: GameState, p: PlayerId, id: ObjectId, index: n
   if (a.cost.tap && o.tapped) return 'It is tapped';
   if (a.cost.tap && isType(s, o, 'Creature') && summoningSick(s, o)) return 'It came under your control this turn';
   if (a.cost.payLife && s.players[p].life < a.cost.payLife) return 'Not enough life';
+  if (a.cost.removeCounter && !Object.values(o.counters).some((n) => n > 0)) return 'It has no counters to remove';
   if (a.cost.tapAnother) {
     const can = tapCandidates(s, p, a);
     if (!can.length) return 'No untapped creature to tap';
@@ -454,6 +455,7 @@ function apply(s: GameState, d: Decision, c: Choice): string | null {
     case 'pick': {
       if (c.kind !== 'pick') return wrong(d, c);
       const none = d.orNone && c.cards.length === 0;
+      if (d.maxPower !== undefined && powerOf(s, c.cards.filter((id) => s.objects[id])) > d.maxPower) return `Total power ${d.maxPower} or less`;
       if (!none && (c.cards.length < d.min || c.cards.length > d.max || new Set(c.cards).size !== c.cards.length || c.cards.some((id) => !d.options.includes(id)))) {
         return `Choose ${d.min === d.max ? d.min : d.min ? `${d.min} to ${d.max}` : `up to ${d.max}`} of the cards offered${d.orNone ? ', or none' : ''}`;
       }
@@ -515,7 +517,7 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       if (bad) return specs.length && !c.targets ? 'Choose targets' : bad;
       // Targets are chosen before costs are paid (601.2c, 601.2h): a sacrifice may take a target.
       event(s, `${playerName(s, p)} casts ${nameOf(s, c.object)}${c.x !== undefined ? ` with X = ${x}` : ''}${describeTargets(s, c.targets)}`);
-      const sources = spellPayment(s, p, c.object, x, c.cost)!.sources;
+      const sources = spellPayment(s, p, c.object, x, c.cost, c.targets)!.sources;
       pay(s, p, sources);
       payCostChoices(s, p, choices, c.sacrificing, c.discarding);
       usedPermission(s, obj(s, c.object));
@@ -525,6 +527,7 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       if (c.modes) spell.modes = c.modes;
       if (c.x !== undefined) spell.x = x;
       if (c.cost !== undefined) spell.castWith = c.cost;
+      if (choices.sacrifice) spell.sacrificedForCost = c.sacrificing ?? choices.sacrifice.options.slice(0, choices.sacrifice.count);
       const extra = riderCounters(s, sources, spell.id);
       if (Object.keys(extra).length) spell.entersWithCounters = extra;
       s.passes = 0;
@@ -558,6 +561,7 @@ function describeTargets(s: GameState, targets?: Target[][]): string {
 /** Activates an ability whose legality was checked; refuses (the copy is dropped) if tapping a creature for the cost left too little mana. */
 function activate(s: GameState, p: PlayerId, id: ObjectId, index: number, targets: Target[][], tapping: ObjectId[] = [], sacrificing?: ObjectId[], discarding?: ObjectId[]): string | null {
   const a = activatedOf(s, id)[index]!;
+  const o = obj(s, id);
   const chosen = costChoices(s, p, a.cost, id);
   const card = obj(s, id).card;
   const sourceName = nameOf(s, id);
@@ -571,6 +575,11 @@ function activate(s: GameState, p: PlayerId, id: ObjectId, index: number, target
   }
   if (a.cost.tap) tap(s, id);
   if (a.cost.payLife) s.players[p].life -= a.cost.payLife;
+  if (a.cost.removeCounter) {
+    const kind = Object.keys(o.counters).sort((x, y) => Number(y === '+1/+1') - Number(x === '+1/+1')).find((k) => o.counters[k]! > 0)!;
+    o.counters[kind]!--;
+    event(s, `${playerName(s, p)} removes a ${kind} counter from ${sourceName}`);
+  }
   payCostChoices(s, p, chosen, sacrificing, discarding);
   if (a.mana) {
     s.resolving = { object: id, effects: a.effects, pc: 0, controller: p, source: id, targets, specs: [] };

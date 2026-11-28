@@ -4,6 +4,7 @@
  * arrange, may, pay or else, choose a colour), so a new mechanic needs no new prompt here.
  */
 import type { Dispatch, StateUpdater } from 'preact/hooks';
+import { characteristics } from '../engine/characteristics';
 import { triggerTargetOptions } from '../engine/engine';
 import { triggeredAbility } from '../engine/triggers';
 import type { Choice, Color, Decision, GameState, ObjectId, PlayerId, Target } from '../engine/types';
@@ -150,12 +151,14 @@ export function DecisionPrompt({ s, d, a, send }: { s: GameState; d: Decision; a
     );
     case 'pick': {
       const n = a.chosen.length;
-      const fits = n >= d.min && n <= d.max;
+      // "Total power 4 or less": the power chosen so far, against the limit.
+      const power = d.maxPower === undefined ? 0 : a.chosen.reduce((k, id) => k + (s.objects[id] ? characteristics(s, s.objects[id]!).power : 0), 0);
+      const fits = n >= d.min && n <= d.max && (d.maxPower === undefined || power <= d.maxPower);
       // Cards in the chooser's own hand are picked there; anything else is listed here.
       const inHand = d.from.every((id) => s.objects[id]?.zone === `${d.player}.hand`);
       return (
         <div class={`prompt ${d.from.length > 4 && !inHand ? 'tall' : ''}`}>
-          <p>{d.text}{d.max > 1 ? ` (${n}/${d.max})` : ''}</p>
+          <p>{d.text}{d.maxPower !== undefined ? ` (power ${power}/${d.maxPower})` : d.max > 1 ? ` (${n}/${d.max})` : ''}</p>
           {!inHand && <CardList s={s} ids={d.from} selectable={new Set(d.options)} selected={new Set(a.chosen)} onPick={(id) => a.toggleChosen(id, d.max)} />}
           <div class="row">
             {d.orNone && <button class="btn" onClick={() => send({ kind: 'pick', cards: [] })} data-testid="no">{d.none ?? 'None'}</button>}
@@ -277,7 +280,7 @@ export function IntentPrompt(c: Casting) {
             </button>
           ))}
         </div>
-        <div class="row">{cancel}{need.upTo && <button class="btn primary" onClick={() => { setIntent({ ...intent, targets: [...intent.targets, picking] }); c.setPicking([]); }}>Done</button>}</div>
+        <div class="row">{cancel}{need.upTo && <button class="btn primary" onClick={() => { setIntent({ ...intent, targets: [...intent.targets, picking] }); c.setPicking([]); }} data-testid="targets-done">Done</button>}</div>
       </div>
     );
     case 'tap': return (

@@ -61,7 +61,8 @@ async function playRandomly(page: Page, seed: number, steps: number) {
     if (await any('[data-testid^=option-]')) { if (await vis('done')) await page.getByTestId('done').click(); continue; } // one option, or modes then Done
     if (await vis('cast-nothing')) { await page.getByTestId('cast-nothing').click(); continue; }
     if (await any('[data-testid^=more-]:enabled')) continue; // distribute counters, one at a time
-    if (await any('.prompt .chipbtn')) continue;
+    if (await any('.prompt .chipbtn')) { if (await vis('targets-done')) await page.getByTestId('targets-done').click(); continue; }
+    if (await vis('targets-done')) { await page.getByTestId('targets-done').click(); continue; } // "up to": none to choose
     if (await vis('yes')) {
       if ((await enabled('yes')) && rnd(2)) await page.getByTestId('yes').click();
       else if (!(await enabled('yes')) && (await page.locator('.prompt .cardlist .card.pickable').count()) && rnd(2)) await page.locator('.prompt .cardlist .card.pickable').first().click();
@@ -150,7 +151,8 @@ const JUMPSTART_EARTH = ['js-reinforced-1', 'js-earthbending-1', 'js-toph', 'js-
 const JUMPSTART_WATER = ['js-katara', 'js-adept-2', 'js-adaptive', 'js-soaring-1', 'js-kyoshi', 'js-earth-rumble-1', 'js-earth-rumble-2'];
 const JUMPSTART_LESSONS = ['js-lessons-1', 'js-spirit', 'js-wise-1', 'js-librarian', 'js-learning-2', 'js-soaring-2', 'js-adept-1'];
 const JUMPSTART_FOOD = ['js-cabbages', 'js-bumi', 'js-siege-engines', 'js-ozai', 'js-relentless-1', 'js-bad-advice', 'js-learning-1'];
-for (const [seed, packets] of [[11, BEGINNER_BOX], [12, BEGINNER_BOX], [13, JUMPSTART_EARTH], [14, JUMPSTART_WATER], [15, JUMPSTART_LESSONS], [16, JUMPSTART_FOOD]] as const) {
+const JUMPSTART_HUNT = ['js-azula', 'js-bounty-hunter-1', 'js-hunting-1', 'js-alliance-1', 'js-hei-bai-2', 'js-bounty-hunter-2', 'js-alliance-2'];
+for (const [seed, packets] of [[11, BEGINNER_BOX], [12, BEGINNER_BOX], [13, JUMPSTART_EARTH], [14, JUMPSTART_WATER], [15, JUMPSTART_LESSONS], [16, JUMPSTART_FOOD], [17, JUMPSTART_HUNT]] as const) {
   test(`random play through the screen never shows a hand to the wrong player (seed ${seed})`, async ({ page }) => {
     test.setTimeout(240_000);
     const errors: string[] = [];

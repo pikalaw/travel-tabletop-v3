@@ -93,6 +93,11 @@ function randomAnswer(s: GameState): Choice {
     }
     case 'pick': {
       if (d.orNone && n(2)) return { kind: 'pick', cards: [] };
+      if (d.maxPower !== undefined) {
+        // Keep creatures at random while their total power stays within the limit.
+        let left = d.maxPower;
+        return { kind: 'pick', cards: d.options.filter((id) => { const pw = characteristics(s, s.objects[id]!).power; if (n(2) || pw > left) return false; left -= pw; return true; }) };
+      }
       const cards = some(d.options, d.max);
       return { kind: 'pick', cards: cards.length >= d.min ? cards : d.options.slice(0, d.min) };
     }

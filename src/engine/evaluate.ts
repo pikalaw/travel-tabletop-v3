@@ -71,6 +71,7 @@ export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx:
   if (f.self && o.id !== ctx.source) return false;
   if (f.attached && o.id !== (ctx.attachedTo ?? s.objects[ctx.source]?.attachedTo)) return false;
   if (f.tapped !== undefined && o.tapped !== f.tapped) return false;
+  if (f.exiledWithSource && o.exiledWith !== ctx.source) return false;
   if (f.damaged !== undefined && (o.damage > 0) !== f.damaged) return false;
   if (f.attacking !== undefined && (o.attacking !== undefined) !== f.attacking) return false;
   if (f.blocking !== undefined && (o.blocking !== undefined) !== f.blocking) return false;
@@ -105,6 +106,7 @@ export function objects(s: GameState, view: View, ref: ObjectRef, ctx: Context):
   if (ref === 'triggerObject') return ctx.eventObject && s.objects[ctx.eventObject] ? [s.objects[ctx.eventObject]!] : [];
   if (ref === 'created') return ctx.created && s.objects[ctx.created] ? [s.objects[ctx.created]!] : [];
   if (ref === 'affected') return ctx.affected && s.objects[ctx.affected] ? [s.objects[ctx.affected]!] : [];
+  if (ref === 'sacrificedForCost') return []; // gone: only its last-known power is used
   if (ref === 'eventSource') return ctx.eventSource && s.objects[ctx.eventSource] ? [s.objects[ctx.eventSource]!] : [];
   if (typeof ref === 'object' && 'topOf' in ref) {
     const lib = s.zones[`${ref.topOf === 'you' ? ctx.controller : ctx.controller === 'p1' ? 'p2' : 'p1'}.library`];
@@ -146,11 +148,13 @@ export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ct
   if ('counters' in a) return countersOf(s, view, a.on, ctx).reduce((n, c) => n + (a.counters === '*' ? Object.values(c).reduce((x, y) => x + y, 0) : c[a.counters] ?? 0), 0);
   if ('powerOf' in a) {
     // An object that left uses its power as it last existed (608.2h): "the sacrificed creature's power".
+    if (a.powerOf === 'sacrificedForCost') return (s.objects[ctx.source]?.sacrificedForCost ?? []).reduce((n, id) => n + (s.lastKnown[id]?.power ?? 0), 0);
     if (a.powerOf === 'chosen') return (ctx.chosen ?? []).reduce((n, id) => n + (s.objects[id] ? view(s.objects[id]!).power : s.lastKnown[id]?.power ?? 0), 0);
     return objects(s, view, a.powerOf, ctx).reduce((n, o) => n + view(o).power, 0);
   }
   if ('manaValueOf' in a) return objects(s, view, a.manaValueOf, ctx).reduce((n, o) => n + manaValue(s.setup.cards[o.card]!.manaCost), 0);
   if ('times' in a) return amount(s, view, a.times, ctx, x) * a.by;
+  if ('thisTurn' in a) return a.thisTurn === 'youSacrificed' ? s.turnLog.sacrificed[ctx.controller] : (['p1', 'p2'] as const).filter((p) => s.turnLog.discarded[p] > 0).length;
   if ('half' in a) return Math.ceil(amount(s, view, a.half, ctx, x) / 2);
   return amount(s, view, a.plus, ctx, x) + a.and;
 }
@@ -162,6 +166,7 @@ export function holds(s: GameState, view: View, c: Condition, ctx: Context): boo
   if ('not' in c) return !holds(s, view, c.not, ctx);
   if ('any' in c) return c.any.some((x) => holds(s, view, x, ctx));
   if ('drawnThisTurn' in c) return s.turnLog.drawn[ctx.controller] >= c.drawnThisTurn;
+  if ('compare' in c) { const a = amount(s, view, c.compare, ctx), b = amount(s, view, c.with, ctx); return c.op === '<=' ? a <= b : c.op === '>=' ? a >= b : a === b; }
   if ('chosen' in c) return (ctx.chosen ?? []).some((id) => !!s.objects[id] && matches(s, view, s.objects[id]!, { ...c.chosen, zone: c.chosen.zone ?? 'graveyard' }, ctx));
   if ('costPaid' in c) return s.objects[ctx.source]?.castWith === c.costPaid;
   if ('discarded' in c) return (ctx.discarded ?? []).some((id) => !!s.objects[id] && matches(s, view, s.objects[id]!, { ...c.discarded, zone: c.discarded.zone ?? 'graveyard' }, ctx));
@@ -171,6 +176,7 @@ export function holds(s: GameState, view: View, c: Condition, ctx: Context): boo
   if ('thisTurn' in c) {
     if (c.thisTurn === 'youAttacked') return s.turnLog.attacked[ctx.controller];
     if (c.thisTurn === 'aLandEnteredForYou') return s.turnLog.landsEntered[ctx.controller] > 0;
+    if (c.thisTurn === 'aCreatureLeftForYou') return s.turnLog.creaturesLeft[ctx.controller] > 0;
     return Object.entries(s.turnLog.lifeLost).some(([p, n]) => p !== ctx.controller && n > 0);
   }
   if ('target' in c) {

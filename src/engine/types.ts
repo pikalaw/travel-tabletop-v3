@@ -94,6 +94,10 @@ export interface GameObject {
   playableTurn?: number;
   /** The colour chosen as it entered (Thriving lands). */
   chosenColor?: Color;
+  /** Exiled by this object's ability, for "the card exiled with Nyla". */
+  exiledWith?: ObjectId;
+  /** For a spell on the stack: what its additional cost sacrificed. */
+  sacrificedForCost?: ObjectId[];
   /** A token that's a copy of a card (Joo Dee): it ceases to exist when it leaves the battlefield. */
   tokenCopy?: boolean;
   /**
@@ -177,6 +181,8 @@ export interface Resolving {
   /** What the last "choose" picked, and the cards discarded, for later effects ("it", "this way"). */
   chosen?: ObjectId[];
   discarded?: ObjectId[];
+  /** Destined Confrontation: the creatures each player keeps, as they choose. */
+  kept?: Partial<Record<PlayerId, ObjectId[]>>;
   /** A free cast it offered was answered (cast or declined). */
   castFreeAnswered?: boolean;
   /** Cards an effect looked at, kept across its decision. */
@@ -222,7 +228,7 @@ export type Decision =
    * the answer with and without cards ("Sacrifice", "Don't"). Discards, searches, optional costs
    * and looks at the library all ask this, so a mechanic that chooses cards needs no new prompt.
    */
-  | { kind: 'pick'; player: PlayerId; from: ObjectId[]; options: ObjectId[]; min: number; max: number; orNone?: boolean; text: string; done?: string; none?: string }
+  | { kind: 'pick'; player: PlayerId; from: ObjectId[]; options: ObjectId[]; min: number; max: number; orNone?: boolean; text: string; done?: string; none?: string; maxPower?: number }
   /** The general choice among worded options ("Put it onto the battlefield", "Leave it on top"), with any cards it's about, shown to the chooser. */
   /** With `max`: pick up to that many options (modes); options sharing an `exclusive` key exclude each other. */
   | { kind: 'choose'; player: PlayerId; text: string; options: string[]; cards?: ObjectId[]; max?: number; exclusive?: (string | null)[] }
@@ -334,6 +340,8 @@ export interface GameState {
     attacked: Record<PlayerId, boolean>; lifeLost: Record<PlayerId, number>; drawn: Record<PlayerId, number>; tapped: Record<ObjectId, number>;
     /** Lands that entered under each player's control, and creature spells each player cast. */
     landsEntered: Record<PlayerId, number>; creatureSpells: Record<PlayerId, number>;
+    /** Cards each player discarded, permanents each sacrificed, and creatures that left the battlefield under each one's control. */
+    discarded: Record<PlayerId, number>; sacrificed: Record<PlayerId, number>; creaturesLeft: Record<PlayerId, number>;
   };
   result: GameResult | null;
   /** Public events, oldest first. */

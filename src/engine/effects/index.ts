@@ -18,6 +18,9 @@ import { castFromHand, type CastFromHand } from './cast-from-hand';
 import { copySelf, type CopySelf } from './copy-self';
 import { exileCastable, type ExileCastable } from './exile-castable';
 import { modal, type Modal } from './modal';
+import { keepWithinPower, type KeepWithinPower } from './keep-within';
+import { nthResolution, type NthResolution } from './nth-resolution';
+import { discardHandDraw, type DiscardHandDraw } from './wheel';
 import { choose, type Choose } from './choose';
 import { distributeCounters, type DistributeCounters } from './distribute';
 import { exileReturns, type ExileReturns } from './exile-returns';
@@ -60,7 +63,7 @@ export type Effect =
   | May | UnlessPays | If
   | Delayed | Reflexive | EachDeals | PlayerCounter | TopCard | Choose | ToOwnersLibrary
   | DistributeCounters | ExileReturns | ToLibraryTop | CastFromHand
-  | ExileCastable | Modal | CopySelf;
+  | ExileCastable | Modal | CopySelf | DiscardHandDraw | KeepWithinPower | NthResolution;
 
 const HANDLERS = {
   draw, discard, damage, gainLife, loseLife,
@@ -73,7 +76,7 @@ const HANDLERS = {
   may, unlessPays, if: conditional,
   delayed, reflexive, eachDeals, playerCounter, topCard, choose, toOwnersLibrary,
   distributeCounters, exileReturns, toLibraryTop, castFromHand,
-  exileCastable, modal, copySelf,
+  exileCastable, modal, copySelf, discardHandDraw, keepWithinPower, nthResolution,
 } satisfies Record<string, Handler<never>>;
 
 type Key = keyof typeof HANDLERS;

@@ -28,6 +28,8 @@ export interface Filter {
   self?: boolean;            // the ability's source itself ("if ~ is tapped")
   attached?: boolean;        // what the source Aura or Equipment is attached to ("enchanted creature")
   tapped?: boolean;
+  /** Exiled with the ability's source ("target card exiled with Nyla"). */
+  exiledWithSource?: boolean;
   /** Was dealt damage this turn (damage stays marked until cleanup). */
   damaged?: boolean;
   attacking?: boolean;
@@ -63,6 +65,7 @@ export type ObjectRef =
   | 'affected'                       // in a static effect's amount: the object it's being applied to ("each of its creature types")
   | 'chosen'                         // the objects this resolution's last choice picked ("sacrifice a land")
   | 'thisCard'                       // the source card in its new zone after it left the battlefield ("return this card")
+  | 'sacrificedForCost'              // what the resolving spell's cost sacrificed, as it last existed ("the sacrificed creature's power")
   | 'eventSource'                    // the spell or ability a trigger's event came from (ward: "that spell")
   | { ids: string[] }                // these objects, fixed when an effect made them ("return those cards")
   | { topOf: 'you' | 'opponent' };   // the top card of a library ("the top card of each opponent's library")
@@ -85,6 +88,8 @@ export type Amount =
   | { creatureTypesOf: ObjectRef; max?: number }
   /** Half, rounded up ("half the lands you control, rounded up"). */
   | { half: Amount }
+  /** What happened this turn: players who discarded a card, permanents the controller sacrificed. */
+  | { thisTurn: 'playersWhoDiscarded' | 'youSacrificed' }
   | { times: Amount; by: number }
   | { plus: Amount; and: number };
 
@@ -96,7 +101,9 @@ export type Condition =
   /** The object chosen for a target spec matches a filter ("if it has power 4 or greater"). */
   | { target: number; is: Filter }
   /** What happened this turn (raid, "if an opponent lost life this turn"). */
-  | { thisTurn: 'youAttacked' | 'opponentLostLife' | 'aLandEnteredForYou' }
+  | { thisTurn: 'youAttacked' | 'opponentLostLife' | 'aLandEnteredForYou' | 'aCreatureLeftForYou' }
+  /** One amount compared with another ("if its power is less than or equal to the sacrificed creature's power"). */
+  | { compare: Amount; op: '<=' | '>=' | '=='; with: Amount }
   /** "If you've drawn two or more cards this turn". */
   | { drawnThisTurn: number }
   /** From the beginning of combat to the end of combat. */
@@ -148,6 +155,8 @@ export interface Cost {
   sacrificeCount?: Amount;
   /** "Discard a card": the payer chooses which. */
   discard?: number;
+  /** "Remove a counter from The Duke": one counter of any kind from the source. */
+  removeCounter?: boolean;
   /** Crew N (702.122): tap untapped creatures you control with total power N or more. */
   crew?: number;
   /** "Tap two untapped Foods you control" (a mana ability's cost): how many, matching what. */
@@ -170,6 +179,8 @@ export interface SpellAbility {
   costOptions?: { cost: Cost; text: string }[];
   /** "This spell costs {1} less to cast for each …" (601.2f): generic reduced, never below zero. */
   reduceBy?: Amount;
+  /** "This spell costs {1} less to cast if it targets a creature with flying": by how much, when a chosen target matches. */
+  reduceIfTargets?: { filter: Filter; by: number };
   /** "You may cast this spell as though it had flash if …" */
   flashIf?: Condition;
 }
@@ -229,6 +240,8 @@ export interface TriggeredAbility {
   onlyIf?: Condition;
   /** A Saga's chapter (714.2): triggers as its lore counters reach this number. */
   chapter?: number;
+  /** "This ability triggers only once each turn." */
+  oncePerTurn?: boolean;
   /** "Whenever one or more …": one trigger for all the events that happen at once (one combat damage step, one declaration). */
   oneOrMore?: boolean;
   /** An intervening "if" clause (603.4): checked when it triggers and again on resolution. */

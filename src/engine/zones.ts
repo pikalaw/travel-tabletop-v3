@@ -55,13 +55,18 @@ const isToken = (s: GameState, id: ObjectId) => !!s.setup.cards[s.objects[id]!.c
 export function discardCard(s: GameState, p: PlayerId, id: ObjectId): ObjectId {
   event(s, `${s.setup.players[p].name} discards ${view(s)(s.objects[id]!).name}`);
   const n = move(s, id, zoneOf(p, 'graveyard'));
+  s.turnLog.discarded[p]++;
   fire(s, { kind: 'discarded', object: n.id, player: p });
   return n.id;
 }
 
 /** A player sacrifices permanents (701.21): "whenever you sacrifice" triggers, then they go to the graveyard. */
 export function sacrifice(s: GameState, ids: ObjectId[], by: PlayerId): ObjectId[] {
-  for (const id of ids) if (s.objects[id]?.zone === 'battlefield') fire(s, { kind: 'sacrificed', object: id, player: by });
+  for (const id of ids) {
+    if (s.objects[id]?.zone !== 'battlefield') continue;
+    s.turnLog.sacrificed[by]++;
+    fire(s, { kind: 'sacrificed', object: id, player: by });
+  }
   return leaveBattlefield(s, ids, 'graveyard');
 }
 
@@ -77,6 +82,7 @@ export function leaveBattlefield(s: GameState, ids: ObjectId[], to: 'graveyard' 
   for (const id of live) {
     const o = s.objects[id]!;
     const dies = to === 'graveyard' && (why.dies ?? v(o).types.includes('Creature'));
+    if (v(o).types.includes('Creature')) s.turnLog.creaturesLeft[o.controller]++;
     const exileInstead = dies && s.effects.some((e) => e.effect.exileIfWouldDie && e.affected.includes(id));
     dest.set(id, exileInstead ? 'exile' : to);
     fire(s, { kind: exileInstead || !dies ? 'leaves' : 'dies', object: id });
