@@ -4,8 +4,8 @@ import { event } from '../state';
 import type { GameState, Target } from '../types';
 import { isPlayer, type Handler } from './kit';
 
-/** "Deals N damage to …". `gainExcess`: "You gain life equal to the excess damage dealt this way" (120.4a). */
-export interface Damage { damage: Amount; to: ObjectRef | PlayerRef; from?: ObjectRef; gainExcess?: boolean }
+/** "Deals N damage to …". The excess damage (120.4a) is kept for the amount 'excessDamage'. */
+export interface Damage { damage: Amount; to: ObjectRef | PlayerRef; from?: ObjectRef }
 
 /** Deals damage from a source (120.3): to a player, life loss; to a creature, marked damage. Combat uses it too. */
 export function dealDamage(s: GameState, sourceId: string, to: Target, n: number): void {
@@ -37,6 +37,6 @@ export const damage: Handler<Damage> = (e, r) => {
     const deathtouch = !!s.objects[from] && v(s.objects[from]!).keywords.includes('deathtouch');
     const lethal = o ? (deathtouch ? (v(o).toughness - o.damage > 0 ? 1 : 0) : Math.max(0, v(o).toughness - o.damage)) : 0;
     dealDamage(s, from, t, k);
-    if (e.gainExcess && o && k > lethal) { s.players[ctx.controller].life += k - lethal; r.log(`${r.playerName(ctx.controller)} gains ${k - lethal} life`); }
+    s.resolving!.excess = o ? Math.max(0, k - lethal) : 0;
   }
 };

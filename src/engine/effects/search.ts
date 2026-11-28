@@ -1,15 +1,19 @@
-import type { Amount, Filter } from '../abilities';
+import type { Amount, Filter, PlayerRef } from '../abilities';
 import { matches } from '../evaluate';
 import { move, shuffleLibrary, zoneOf } from '../state';
 import { putOntoBattlefield } from '../zones';
 import type { Handler } from './kit';
 
-/** Search your library (and, with `graveyardToo`, your graveyard) for up to `n` cards matching the filter, put them somewhere, then shuffle (701.23). */
-export interface Search { search: Filter; n?: Amount; to: 'hand' | 'battlefield'; tapped?: boolean; graveyardToo?: boolean }
+/**
+ * Search your library (and, with `graveyardToo`, your graveyard) for up to `n` cards matching the
+ * filter, put them somewhere, then shuffle (701.23). `player`: another player searches their own.
+ */
+export interface Search { search: Filter; n?: Amount; to: 'hand' | 'battlefield'; tapped?: boolean; graveyardToo?: boolean; player?: PlayerRef }
 
 export const search: Handler<Search> = (e, r) => {
   const { s, v, ctx } = r;
-  const p = ctx.controller;
+  const p = e.player ? r.players(e.player)[0] : ctx.controller;
+  if (!p) return;
   const picked = r.answer('pick');
   if (!picked) {
     const options = [

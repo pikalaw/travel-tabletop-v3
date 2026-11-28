@@ -100,6 +100,14 @@ export interface GameObject {
   sacrificedForCost?: ObjectId[];
   /** A token that's a copy of a card (Joo Dee): it ceases to exist when it leaves the battlefield. */
   tokenCopy?: boolean;
+  /** A copy that isn't legendary (Ran and Shaw's token). */
+  notLegendary?: boolean;
+  /** A copy of a spell on the stack (Jeong Jeong): it ceases to exist as it leaves the stack (707.10). */
+  spellCopy?: boolean;
+  /** Cast with flashback: exiled instead of going anywhere else as it leaves the stack (702.34). */
+  flashback?: boolean;
+  /** This permanent was cast ("if you cast them"), not put onto the battlefield otherwise. */
+  wasCast?: boolean;
   /**
    * Another player may cast this exiled card (Hama, Fire Lord Ozai): who, how it's paid, and how
    * long: while they control `source`, or through `untilTurn`. `group`: only one of the group may be played.
@@ -181,6 +189,8 @@ export interface Resolving {
   /** What the last "choose" picked, and the cards discarded, for later effects ("it", "this way"). */
   chosen?: ObjectId[];
   discarded?: ObjectId[];
+  /** The excess damage this resolution's last damage dealt ("the amount of excess damage dealt this way"). */
+  excess?: number;
   /** Destined Confrontation: the creatures each player keeps, as they choose. */
   kept?: Partial<Record<PlayerId, ObjectId[]>>;
   /** A free cast it offered was answered (cast or declined). */
@@ -220,8 +230,8 @@ export type Decision =
   | { kind: 'may'; player: PlayerId; text: string }
   | { kind: 'chooseColor'; player: PlayerId; object: ObjectId; options: Color[] }
   | { kind: 'arrange'; player: PlayerId; cards: ObjectId[]; to: 'bottom' | 'graveyard' }
-  /** "… unless … pays": yes pays the cost; no lets `otherwise` happen. */
-  | { kind: 'payOrElse'; player: PlayerId; cost: string; waterbend?: number; otherwise: string }
+  /** "… unless … pays": yes pays the cost; no lets `otherwise` happen. With `reward`, "You may pay {1}. If you do, …": yes pays for it. */
+  | { kind: 'payOrElse'; player: PlayerId; cost: string; waterbend?: number; otherwise?: string; reward?: string }
   /**
    * The general card choice that effects ask: between `min` and `max` of `options`, among the cards
    * shown (`from`, all visible to the chooser), or (`orNone`) none at all. `done` and `none` label
@@ -334,7 +344,7 @@ export interface GameState {
    */
   delayed: DelayedTrigger[];
   /** Counters on permanents that left the battlefield this turn, for "its counters" (608.2h). */
-  lastKnown: Record<ObjectId, { counters: Record<string, number>; movedTo?: ObjectId; power?: number }>;
+  lastKnown: Record<ObjectId, { counters: Record<string, number>; movedTo?: ObjectId; power?: number; controller?: PlayerId }>;
   /** What happened this turn, for "this turn" conditions and "second card" triggers. */
   turnLog: {
     attacked: Record<PlayerId, boolean>; lifeLost: Record<PlayerId, number>; drawn: Record<PlayerId, number>; tapped: Record<ObjectId, number>;

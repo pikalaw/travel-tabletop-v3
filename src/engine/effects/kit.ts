@@ -58,7 +58,14 @@ export function resolution(s: GameState, choice: Choice | undefined): Resolution
     if (ref === 'you') return [ctx.controller];
     if (ref === 'opponent') return [other(ctx.controller)];
     if (ref === 'each') return [...PLAYERS];
-    if ('controllerOf' in ref) return objects(s, v, ref.controllerOf, ctx).slice(0, 1).map((o) => o.controller);
+    if ('controllerOf' in ref) {
+      const of = objects(s, v, ref.controllerOf, ctx)[0];
+      if (of) return [of.controller];
+      // A target that has left: its controller as it last existed (608.2h).
+      const gone = typeof ref.controllerOf === 'object' && 'target' in ref.controllerOf ? ctx.targets?.[ref.controllerOf.target]?.[0] : undefined;
+      const last = gone ? s.lastKnown[gone]?.controller : undefined;
+      return last ? [last] : [];
+    }
     return (ctx.targets?.[ref.target] ?? []).filter(isPlayer);
   };
   const objs = (ref: ObjectRef) => objects(s, v, ref, ctx);

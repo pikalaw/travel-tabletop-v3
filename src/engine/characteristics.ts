@@ -23,7 +23,7 @@ function printedChars(s: GameState, o: GameObject): Characteristics {
   const p = s.setup.cards[o.card];
   if (!p) throw new Error(`no card data for ${o.card}`);
   return {
-    name: p.name, supertypes: [...p.supertypes], types: [...p.types], subtypes: [...p.subtypes],
+    name: p.name, supertypes: p.supertypes.filter((t) => !(o.notLegendary && t === 'Legendary')), types: [...p.types], subtypes: [...p.subtypes],
     power: p.power ?? 0, toughness: p.toughness ?? 0, keywords: p.keywords.map((k) => k.toLowerCase()),
     colors: p.colors ?? colorsOfCost(p.manaCost), abilitiesRemoved: false,
     parts: p.power !== undefined || p.toughness !== undefined ? [{ label: 'printed', power: p.power ?? 0, toughness: p.toughness ?? 0, set: true }] : [],

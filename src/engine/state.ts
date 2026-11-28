@@ -50,7 +50,9 @@ export function move(s: GameState, id: ObjectId, to: ZoneId, opts: { tapped?: bo
   const from = s.zones[o.zone];
   from.splice(from.indexOf(id), 1);
   delete s.objects[id];
-  const dest: ZoneId = to === 'battlefield' || to === 'stack' ? to : zoneOf(o.owner, to.split('.')[1] as 'library');
+  // A spell cast with flashback is exiled instead of going anywhere else as it leaves the stack (702.34).
+  const flashback = o.zone === 'stack' && o.flashback && to !== 'stack';
+  const dest: ZoneId = flashback ? zoneOf(o.owner, 'exile') : to === 'battlefield' || to === 'stack' ? to : zoneOf(o.owner, to.split('.')[1] as 'library');
   const n = createObject(s, o.card, o.owner, dest);
   if (opts.bottom) { s.zones[dest].pop(); s.zones[dest].unshift(n.id); }
   if (dest.endsWith('.library') && !o.zone.endsWith('.library')) fire(s, { kind: 'toLibrary', object: n.id });

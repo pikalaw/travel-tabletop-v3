@@ -65,6 +65,7 @@ export function matches(s: GameState, view: View, o: GameObject, f: Filter, ctx:
   if (f.subtypes && !f.subtypes.some((t) => c.subtypes.includes(t))) return false;
   if (f.notSubtypes && f.notSubtypes.some((t) => c.subtypes.includes(t))) return false;
   if (f.supertypes && !f.supertypes.some((t) => c.supertypes.includes(t))) return false;
+  if (f.notSupertypes && f.notSupertypes.some((t) => c.supertypes.includes(t))) return false;
   if (f.controller === 'you' && o.controller !== ctx.controller) return false;
   if (f.controller === 'opponent' && o.controller === ctx.controller) return false;
   if (f.other && o.id === ctx.source) return false;
@@ -138,6 +139,7 @@ export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ct
   if (typeof a === 'number') return a;
   if (a === 'x') return x;
   if (a === 'eventAmount') return ctx.eventAmount ?? 0;
+  if (a === 'excessDamage') return s.resolving?.excess ?? 0;
   if ('playerCounters' in a) return s.players[ctx.controller].counters[a.playerCounters] ?? 0;
   if ('creatureTypesOf' in a) {
     // Creature types are the subtypes of a creature (205.3m); the pool has no changelings.
@@ -163,6 +165,7 @@ export function amount(s: GameState, view: View, a: Amount, ctx: Context, x = ct
 export function holds(s: GameState, view: View, c: Condition, ctx: Context): boolean {
   if (c === 'yourTurn') return s.active === ctx.controller;
   if (c === 'firstTapThisTurn') return !!ctx.eventObject && s.turnLog.tapped[ctx.eventObject] === 1;
+  if (c === 'sourceWasCast') return !!s.objects[ctx.source]?.wasCast;
   if (c === 'sourceAttackedThisTurn') return s.turnLog.attackers.includes(ctx.source);
   if (c === 'duringCombat') return ['beginCombat', 'attackers', 'blockers', 'firstStrikeDamage', 'damage', 'endCombat'].includes(s.step);
   if ('not' in c) return !holds(s, view, c.not, ctx);

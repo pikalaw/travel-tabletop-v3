@@ -175,10 +175,12 @@ export function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0, opt
   if (o.castableBy?.player === p && o.zone.endsWith('.exile')) {
     return costToPay(s, p, [], o.castableBy.cost === 'free' ? 0 : manaValue(printed(s, o).manaCost));
   }
-  const printedCost = o.zone.endsWith('.exile') && o.airbended ? parseCost('{2}') : printed(s, o).manaCost;
+  const spell = spellOf(s, id);
+  const printedCost = o.zone.endsWith('.exile') && o.airbended ? parseCost('{2}')
+    : o.zone.endsWith('.graveyard') && spell?.flashback ? parseCost(spell.flashback) // 702.34a: the flashback cost instead
+    : printed(s, o).manaCost;
   // 107.3: X is paid as the chosen number.
   const cost = printedCost.map((m): ManaSymbol => (m.kind === 'x' ? { kind: 'generic', amount: x } : m));
-  const spell = spellOf(s, id);
   const extra = spell?.additionalCost;
   // 601.2f: reductions, the spell's own and static abilities', take off generic mana only.
   let off = (spell?.reduceBy !== undefined ? amount(s, view(s), spell.reduceBy, { controller: p, source: id }) : 0) + costReduction(s, p, id);

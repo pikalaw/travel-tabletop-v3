@@ -10,7 +10,7 @@
 import type { Choice, GameState } from '../types';
 import { airbend, type Airbend } from './airbend';
 import { attach, type Attach } from './attach';
-import { conditional, may, unlessPays, type If, type May, type UnlessPays } from './choices';
+import { conditional, may, mayPay, unlessPays, type If, type May, type MayPay, type UnlessPays } from './choices';
 import { continuous, exileIfWouldDie, grant, pump, type Continuous, type ExileIfWouldDie, type Grant, type Pump } from './continuous';
 import { counterSpell, counterUnlessPays, type CounterSpell, type CounterUnlessPays } from './counter-spell';
 import { addCounters, putCountersOf, removeAnyCounters, removeCounters, type AddCounters, type PutCountersOf, type RemoveAnyCounters, type RemoveCounters } from './counters';
@@ -21,6 +21,7 @@ import { modal, type Modal } from './modal';
 import { keepWithinPower, type KeepWithinPower } from './keep-within';
 import { nthResolution, type NthResolution } from './nth-resolution';
 import { discardHandDraw, type DiscardHandDraw } from './wheel';
+import { copySpell, copyTrigger, type CopySpell, type CopyTrigger } from './copies';
 import { choose, type Choose } from './choose';
 import { distributeCounters, type DistributeCounters } from './distribute';
 import { exileReturns, type ExileReturns } from './exile-returns';
@@ -60,10 +61,10 @@ export type Effect =
   | CreateToken | AddMana | Earthbend | Airbend | ReturnToBattlefield | Attach
   | Mill | ExileTopPlayable | ShuffleIntoLibrary | Scry | Surveil | Search | LookAtTop | RevealAndDiscard
   | ExtraLand | Optional | Fight | CounterSpell | CounterUnlessPays
-  | May | UnlessPays | If
+  | May | MayPay | UnlessPays | If
   | Delayed | Reflexive | EachDeals | PlayerCounter | TopCard | Choose | ToOwnersLibrary
   | DistributeCounters | ExileReturns | ToLibraryTop | CastFromHand
-  | ExileCastable | Modal | CopySelf | DiscardHandDraw | KeepWithinPower | NthResolution;
+  | ExileCastable | Modal | CopySelf | DiscardHandDraw | KeepWithinPower | NthResolution | CopyTrigger | CopySpell;
 
 const HANDLERS = {
   draw, discard, damage, gainLife, loseLife,
@@ -73,10 +74,10 @@ const HANDLERS = {
   createToken, addMana, earthbend, airbend, returnToBattlefield, attach,
   mill, exileTopPlayable, shuffleIntoLibrary, scry, surveil, search, lookAtTop, revealAndDiscard,
   extraLand, optional, fight, counterSpell, counterUnlessPays,
-  may, unlessPays, if: conditional,
+  may, mayPay, unlessPays, if: conditional,
   delayed, reflexive, eachDeals, playerCounter, topCard, choose, toOwnersLibrary,
   distributeCounters, exileReturns, toLibraryTop, castFromHand,
-  exileCastable, modal, copySelf, discardHandDraw, keepWithinPower, nthResolution,
+  exileCastable, modal, copySelf, discardHandDraw, keepWithinPower, nthResolution, copyTrigger, copySpell,
 } satisfies Record<string, Handler<never>>;
 
 type Key = keyof typeof HANDLERS;

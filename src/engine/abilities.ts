@@ -22,6 +22,7 @@ export interface Filter {
   subtypes?: string[];       // any of these subtypes
   notSubtypes?: string[];
   supertypes?: string[];
+  notSupertypes?: string[];
   notTypes?: string[];
   controller?: 'you' | 'opponent';
   other?: boolean;           // not the ability's source
@@ -80,6 +81,8 @@ export type Amount =
   | { powerOf: ObjectRef }
   | { manaValueOf: ObjectRef }
   | 'x'
+  /** "The amount of excess damage dealt this way" (120.4a), by this resolution's last damage. */
+  | 'excessDamage'
   /** "That much": the amount the trigger's event was about (counters put). */
   | 'eventAmount'
   /** Counters of a kind on the ability's controller (experience). */
@@ -104,6 +107,8 @@ export type Condition =
   | { target: number; is: Filter }
   /** What happened this turn (raid, "if an opponent lost life this turn"). */
   | { thisTurn: 'youAttacked' | 'opponentLostLife' | 'aLandEnteredForYou' | 'aCreatureLeftForYou' }
+  /** The source permanent was cast, not put onto the battlefield otherwise ("if you cast them"). */
+  | 'sourceWasCast'
   /** The source attacked this turn ("if this creature didn't attack this turn"). */
   | 'sourceAttackedThisTurn'
   /** One amount compared with another ("if its power is less than or equal to the sacrificed creature's power"). */
@@ -185,6 +190,8 @@ export interface SpellAbility {
   costOptions?: { cost: Cost; text: string }[];
   /** "This spell costs {1} less to cast for each …" (601.2f): generic reduced, never below zero. */
   reduceBy?: Amount;
+  /** Flashback (702.34): cast from the graveyard for this cost, then exiled. */
+  flashback?: string;
   /** "This spell costs {1} less to cast if it targets a creature with flying": by how much, when a chosen target matches. */
   reduceIfTargets?: { filter: Filter; by: number };
   /** "You may cast this spell as though it had flash if …" */
@@ -235,6 +242,10 @@ export type TriggerEvent =
   /** "Whenever an opponent discards a card" (one trigger each), "… mills one or more cards" (one each mill). */
   | { discards: 'opponent' | 'you' }
   | { mills: 'opponent' | 'you' }
+  /** "Whenever one or more creatures you control leave the battlefield without dying". */
+  | { leavesWithoutDying: Filter }
+  /** "Whenever a creature you control attacking causes a triggered ability of that creature to trigger" (Firebender Ascension). */
+  | { attackTriggers: Filter }
   /** A Saga's chapter ability: the `chapter` it is (714.2b). */
   | { lore: true };
 

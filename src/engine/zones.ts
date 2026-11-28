@@ -22,21 +22,23 @@ export function putOntoBattlefield(s: GameState, id: ObjectId, controller: Playe
 }
 
 /** Creates a token on the battlefield (111.1). */
-export function createToken(s: GameState, card: string, controller: PlayerId, opts: { tapped?: boolean; copy?: boolean } = {}): ObjectId {
+export function createToken(s: GameState, card: string, controller: PlayerId, opts: { tapped?: boolean; copy?: boolean; notLegendary?: boolean } = {}): ObjectId {
   if (!s.setup.cards[card]) throw new Error(`no token data for ${card}`);
   const o = createObject(s, card, controller, 'battlefield');
   if (opts.copy) o.tokenCopy = true;
+  if (opts.notLegendary) o.notLegendary = true;
   return entered(s, o, opts);
 }
 
 /** How a permanent enters: tapped, attached, or with extra counters (Animal Attendant's mana). */
-interface EnterOptions { tapped?: boolean; attachTo?: ObjectId; counters?: Record<string, number>; castWith?: number }
+interface EnterOptions { tapped?: boolean; attachTo?: ObjectId; counters?: Record<string, number>; castWith?: number; cast?: boolean }
 
 /** What happens as a permanent enters: its own entering replacements (614.1c-d), then the event. */
 function entered(s: GameState, o: GameObject, opts: EnterOptions): ObjectId {
   const reps = s.setup.cards[o.card]?.script?.replacements ?? [];
   if (opts.attachTo) o.attachedTo = opts.attachTo; // an Aura enters attached (303.4f)
   if (opts.castWith !== undefined) o.castWith = opts.castWith;
+  if (opts.cast) o.wasCast = true;
   o.tapped = !!opts.tapped || reps.some((r) => 'entersTapped' in r.replace);
   o.controlledSince = s.turn;
   if (view(s)(o).types.includes('Land')) s.turnLog.landsEntered[o.controller]++;
@@ -97,7 +99,7 @@ export function leaveBattlefield(s: GameState, ids: ObjectId[], to: 'graveyard' 
     const name = v(o).name;
     const power = v(o).power;
     const n = move(s, id, zoneOf(o.owner, d));
-    s.lastKnown[id] = { counters: { ...o.counters }, movedTo: n.id, power };
+    s.lastKnown[id] = { counters: { ...o.counters }, movedTo: n.id, power, controller: o.controller };
     if (token) { s.zones[n.zone].splice(s.zones[n.zone].indexOf(n.id), 1); delete s.objects[n.id]; continue; }
     // 701.65: an earthbent land that dies or is exiled comes back, by a triggered ability of its earthbending.
     if (earthbent && (d === 'graveyard' || d === 'exile')) {

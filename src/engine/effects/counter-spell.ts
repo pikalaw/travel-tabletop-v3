@@ -9,7 +9,7 @@ export interface CounterSpell { counterSpell: ObjectRef }
 export interface CounterUnlessPays { counterUnlessPays: string; on: ObjectRef }
 
 function counter(s: GameState, o: GameObject): void {
-  if (o.ability) { s.zones.stack.splice(s.zones.stack.indexOf(o.id), 1); delete s.objects[o.id]; } else move(s, o.id, zoneOf(o.owner, 'graveyard'));
+  if (o.ability || o.spellCopy) { s.zones.stack.splice(s.zones.stack.indexOf(o.id), 1); delete s.objects[o.id]; } else move(s, o.id, zoneOf(o.owner, 'graveyard'));
 }
 
 export const counterSpell: Handler<CounterSpell> = (e, r) => {

@@ -6,6 +6,6 @@ export default card({
   name: "Razor Rings",
   spell: {
     targets: [{ objects: { types: ['Creature'], anyOf: [{ attacking: true }, { blocking: true }] } }],
-    effects: [{ damage: 4, to: { target: 0 }, gainExcess: true }],
+    effects: [{ damage: 4, to: { target: 0 } }, { gainLife: 'you', n: 'excessDamage' }],
   },
 });

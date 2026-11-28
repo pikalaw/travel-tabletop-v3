@@ -140,7 +140,8 @@ export function whyNotCast(s: GameState, p: PlayerId, id: ObjectId, targets?: Ta
   const o = s.objects[id];
   const fromExile = !!o && ((o.zone === zoneOf(p, 'exile') && o.owner === p && (!!o.airbended || playableFromExile(s, p, o))) || castableFromExile(s, p, o));
   const fromLibrary = !!o && castableFromLibraryTop(s, p, id);
-  if (!o || (o.zone !== zoneOf(p, 'hand') && !fromExile && !fromLibrary)) return 'Not in your hand';
+  const fromGraveyard = !!o && o.zone === zoneOf(p, 'graveyard') && !!spellOf(s, id)?.flashback;
+  if (!o || (o.zone !== zoneOf(p, 'hand') && !fromExile && !fromLibrary && !fromGraveyard)) return 'Not in your hand';
   if (isType(s, o, 'Land')) return 'Lands are played, not cast';
   const spellDef = spellOf(s, id);
   const instantSpeed = isType(s, o, 'Instant') || characteristics(s, o).keywords.includes('flash')
@@ -245,7 +246,7 @@ export function legalActions(s: GameState): Choice[] {
         if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
       }
       const top = s.zones[zoneOf(p, 'library')].slice(-1);
-      for (const id of [...s.zones['p1.exile'], ...s.zones['p2.exile'], ...top]) {
+      for (const id of [...s.zones['p1.exile'], ...s.zones['p2.exile'], ...top, ...s.zones[zoneOf(p, 'graveyard')]]) {
         if (!whyNotPlay(s, p, id)) out.push({ kind: 'play', object: id });
         if (!whyNotCast(s, p, id)) out.push({ kind: 'cast', object: id });
       }
@@ -530,7 +531,9 @@ function applyPriority(s: GameState, p: PlayerId, c: Choice): string | null {
       payCostChoices(s, p, choices, c.sacrificing, c.discarding);
       usedPermission(s, obj(s, c.object));
       if (isType(s, obj(s, c.object), 'Creature')) s.turnLog.creatureSpells[p]++;
+      const flashback = obj(s, c.object).zone.endsWith('.graveyard');
       const spell = move(s, c.object, 'stack', { controller: p });
+      if (flashback) spell.flashback = true;
       spell.targets = c.targets ?? [];
       if (c.modes) spell.modes = c.modes;
       if (c.x !== undefined) spell.x = x;
@@ -692,7 +695,7 @@ function resolveTop(s: GameState): void {
   event(s, `${label} resolves`);
   if (!a && PERMANENT_TYPES.some((t) => isType(s, o, t))) {
     const attachTo = spellOf(s, id)?.enchant ? legal[0]?.[0] : undefined;
-    putOntoBattlefield(s, id, o.controller, { ...(attachTo ? { attachTo } : {}), ...(o.entersWithCounters ? { counters: o.entersWithCounters } : {}), ...(o.castWith !== undefined ? { castWith: o.castWith } : {}) });
+    putOntoBattlefield(s, id, o.controller, { ...(attachTo ? { attachTo } : {}), ...(o.entersWithCounters ? { counters: o.entersWithCounters } : {}), ...(o.castWith !== undefined ? { castWith: o.castWith } : {}), cast: true });
     s.priority = s.active;
     return;
   }
@@ -713,7 +716,7 @@ function continueResolving(s: GameState, c?: Choice): void {
 function finish(s: GameState, id: ObjectId): void {
   const o = s.objects[id];
   if (!o || o.zone !== 'stack') return;
-  if (o.ability) removeFromStack(s, id); else move(s, id, zoneOf(o.owner, 'graveyard'));
+  if (o.ability || o.spellCopy) removeFromStack(s, id); else move(s, id, zoneOf(o.owner, 'graveyard'));
 }
 
 function removeFromStack(s: GameState, id: ObjectId): void {

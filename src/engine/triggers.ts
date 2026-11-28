@@ -26,7 +26,9 @@ export type GameEventKind =
   | { kind: 'toLibrary'; object: ObjectId }
   | { kind: 'sacrificed'; object: ObjectId; player: PlayerId }
   | { kind: 'discarded'; object: ObjectId; player: PlayerId }
-  | { kind: 'milled'; player: PlayerId; n: number };
+  | { kind: 'milled'; player: PlayerId; n: number }
+  /** An attacking creature's own triggered ability triggered (`index` of its abilities) as it attacked. */
+  | { kind: 'attackTriggered'; object: ObjectId; card: string; index: number };
 
 /** The keyword library's triggered keywords (702): written once, used by every card that has them. */
 const KEYWORD_TRIGGERS: Record<string, TriggeredAbility> = {
@@ -96,6 +98,8 @@ function eventMatches(s: GameState, v: View, w: TriggerEvent, self: boolean | un
   if ('sacrificed' in w) return ev.kind === 'sacrificed' && ev.player === ctx.controller && filterOn(w.sacrificed);
   const whose = (p: PlayerId, w: 'you' | 'opponent') => (w === 'you') === (p === ctx.controller);
   if ('discards' in w) return ev.kind === 'discarded' && whose(ev.player, w.discards);
+  if ('leavesWithoutDying' in w) return ev.kind === 'leaves' && filterOn(w.leavesWithoutDying);
+  if ('attackTriggers' in w) return ev.kind === 'attackTriggered' && filterOn(w.attackTriggers);
   if ('mills' in w) return ev.kind === 'milled' && ev.n > 0 && whose(ev.player, w.mills);
   if ('countersPut' in w) return ev.kind === 'countersPut' && ev.counter === w.kind && ev.player === ctx.controller && filterOn(w.countersPut);
   if ('step' in w) return ev.kind === 'step' && ev.step === w.step && (w.whose === 'any' || s.active === ctx.controller);
@@ -118,7 +122,7 @@ export function fire(s: GameState, ev: GameEventKind): void {
   const about = { ...('object' in ev ? { eventObject: ev.object } : {}), ...(ev.kind === 'becomesTarget' ? { eventSource: ev.by } : {}) };
   // "That much" (counters put), or a cast spell's mana value as it was cast ("that spell's mana value").
   const spellValue = ev.kind === 'cast' && s.objects[ev.object] ? manaValue(s.setup.cards[s.objects[ev.object]!.card]!.manaCost) : undefined;
-  const amount = ev.kind === 'countersPut' ? { eventAmount: ev.n } : spellValue !== undefined ? { eventAmount: spellValue } : {};
+  const amount = ev.kind === 'countersPut' ? { eventAmount: ev.n } : ev.kind === 'attackTriggered' ? { eventAmount: ev.index } : spellValue !== undefined ? { eventAmount: spellValue } : {};
   const consider = (t: TriggeredAbility, ctx: Context, self: boolean | undefined) => {
     if (t.chapter !== undefined) return chapterReached(s, t.chapter, ev, ctx);
     if (!eventMatches(s, v, t.when, self, ev, ctx)) return false;
@@ -126,6 +130,7 @@ export function fire(s: GameState, ev: GameEventKind): void {
     if (t.if && !holds(s, v, t.if, ctx)) return false; // 603.4: the intervening "if" is checked as it triggers
     return true;
   };
+  const attackTriggered: GameEventKind[] = [];
   for (const id of s.zones.battlefield) {
     const o = s.objects[id]!;
     for (const [index, t] of triggeredAbilities(s, o, v)) {
@@ -137,8 +142,11 @@ export function fire(s: GameState, ev: GameEventKind): void {
       const once = `trigger:${o.id}:${index}`;
       if (t.oncePerTurn) { if (s.activatedThisTurn[once]) continue; s.activatedThisTurn[once] = 1; }
       s.pendingTriggers.push({ controller: o.controller, source: o.id, sourceName: v(o).name, card: o.card, index, ...about, ...amount });
+      // Firebender Ascension: an attacking creature's own ability triggering as it attacks.
+      if (ev.kind === 'attacks' && ev.object === o.id) attackTriggered.push({ kind: 'attackTriggered', object: o.id, card: o.card, index });
     }
   }
+  for (const e of attackTriggered) fire(s, e);
   s.delayed.forEach((d, k) => {
     if (d.done || (d.untilTurn !== undefined && s.turn > d.untilTurn)) return;
     if (d.about && (!('object' in ev) || ev.object !== d.about)) return;

@@ -7,9 +7,10 @@ import type { Handler, Resolution } from './kit';
  * A delayed triggered ability (603.7): "When that creature dies this turn, you earthbend 4". It
  * watches for its event from now on, about `about` if given, until the end of the turn with
  * `thisTurn`, and then it triggers once. "Until your next turn, whenever …" (`untilYourNextTurn`)
- * triggers every time until its controller's next turn begins.
+ * triggers every time until its controller's next turn begins. With `each`, one watches each of the
+ * objects `about` refers to ("whenever a creature you control dealt damage this way dies this turn").
  */
-export interface Delayed { delayed: TriggeredAbility; about?: ObjectRef; thisTurn?: boolean; untilYourNextTurn?: boolean }
+export interface Delayed { delayed: TriggeredAbility; about?: ObjectRef; each?: boolean; thisTurn?: boolean; untilYourNextTurn?: boolean }
 
 /**
  * A reflexive triggered ability (603.12): "When you do, …". It triggers at once, when `provided`
@@ -24,11 +25,12 @@ const base = (r: Resolution) => {
 };
 
 export const delayed: Handler<Delayed> = (e, r) => {
-  const about = e.about ? r.objs(e.about)[0]?.id : undefined;
-  if (e.about && !about) return; // what it would watch is gone
+  const watched = e.about ? r.objs(e.about).map((o) => o.id) : [];
+  if (e.about && !watched.length) return; // what it would watch is gone
   // Turns alternate: the controller's next turn is two away on their own turn, one on the opponent's.
   const lastTurn = e.thisTurn ? r.s.turn : e.untilYourNextTurn ? r.s.turn + (r.s.active === r.ctx.controller ? 1 : 0) : undefined;
-  r.s.delayed.push({ ability: e.delayed, ...base(r), ...(about ? { about } : {}), ...(lastTurn !== undefined ? { untilTurn: lastTurn } : {}), ...(e.untilYourNextTurn ? { repeats: true } : {}) });
+  const one = (about?: string) => r.s.delayed.push({ ability: e.delayed, ...base(r), ...(about ? { about } : {}), ...(lastTurn !== undefined ? { untilTurn: lastTurn } : {}), ...(e.untilYourNextTurn ? { repeats: true } : {}) });
+  if (e.each) watched.forEach(one); else one(watched[0]);
 };
 
 export const reflexive: Handler<Reflexive> = (e, r) => {

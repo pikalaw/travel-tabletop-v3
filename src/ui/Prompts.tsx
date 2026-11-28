@@ -132,7 +132,7 @@ export function DecisionPrompt({ s, d, a, send }: { s: GameState; d: Decision; a
     );
     case 'payOrElse': return (
       <div class="prompt">
-        <p>Pay {payWords(d)}? If you don't, {d.otherwise}.</p>
+        <p>Pay {payWords(d)}? {d.reward ? `If you do, ${d.reward}.` : `If you don't, ${d.otherwise}.`}</p>
         <div class="row"><button class="btn" onClick={() => send({ kind: 'no' })} data-testid="no">Don't pay</button><button class="btn primary" onClick={() => send({ kind: 'yes' })} data-testid="yes">Pay</button></div>
       </div>
     );
