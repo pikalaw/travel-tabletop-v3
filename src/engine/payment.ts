@@ -164,9 +164,13 @@ export function spellPayment(s: GameState, p: PlayerId, id: ObjectId, x = 0, opt
   // 601.2f: reductions, the spell's own and static abilities', take off generic mana only.
   let off = (spell?.reduceBy !== undefined ? amount(s, view(s), spell.reduceBy, { controller: p, source: id }) : 0) + costReduction(s, p, id);
   const reduced = cost.map((m): ManaSymbol => { if (m.kind !== 'generic' || off <= 0) return m; const take = Math.min(off, m.amount); off -= take; return { kind: 'generic', amount: m.amount - take }; });
-  const extraMana = [extra?.mana, option !== undefined ? spell?.costOptions?.[option]?.cost.mana : undefined].filter((m): m is string => !!m);
-  return costToPay(s, p, [...reduced, ...extraMana.flatMap(parseCost)], extra?.waterbend ?? 0);
+  const chosen = option !== undefined ? spell?.costOptions?.[option]?.cost : undefined;
+  const extraMana = [extra?.mana, chosen?.mana].filter((m): m is string => !!m);
+  return costToPay(s, p, [...reduced, ...extraMana.flatMap(parseCost)], waterbendOf(extra, x) + waterbendOf(chosen, x));
 }
+
+/** A cost's waterbend amount: its number, or X ("waterbend {X}"). */
+export const waterbendOf = (c: { waterbend?: number | 'x' } | undefined, x = 0) => (c?.waterbend === 'x' ? x : c?.waterbend ?? 0);
 
 /** Mana with a rider spent on this spell (Animal Attendant): the counters its permanent enters with. */
 export function riderCounters(s: GameState, sources: string[], spell: ObjectId): Record<string, number> {
@@ -192,7 +196,7 @@ export function paymentPreview(s: GameState, p: PlayerId, c: Choice): { tapped: 
   else if (c.kind === 'activate') {
     const a = s.objects[c.object] ? activatedOf(s, c.object)[c.ability] : undefined;
     if (!a) return null;
-    pay = a.cost.mana || a.cost.waterbend ? costToPay(s, p, parseCost(a.cost.mana ?? ''), a.cost.waterbend, c.object, !!a.cost.tap) : { sources: [] };
+    pay = a.cost.mana || a.cost.waterbend ? costToPay(s, p, parseCost(a.cost.mana ?? ''), waterbendOf(a.cost), c.object, !!a.cost.tap) : { sources: [] };
   }
   if (!pay) return null;
   const tapped = new Set<ObjectId>();

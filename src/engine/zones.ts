@@ -28,12 +28,13 @@ export function createToken(s: GameState, card: string, controller: PlayerId, op
 }
 
 /** How a permanent enters: tapped, attached, or with extra counters (Animal Attendant's mana). */
-interface EnterOptions { tapped?: boolean; attachTo?: ObjectId; counters?: Record<string, number> }
+interface EnterOptions { tapped?: boolean; attachTo?: ObjectId; counters?: Record<string, number>; castWith?: number }
 
 /** What happens as a permanent enters: its own entering replacements (614.1c-d), then the event. */
 function entered(s: GameState, o: GameObject, opts: EnterOptions): ObjectId {
   const reps = s.setup.cards[o.card]?.script?.replacements ?? [];
   if (opts.attachTo) o.attachedTo = opts.attachTo; // an Aura enters attached (303.4f)
+  if (opts.castWith !== undefined) o.castWith = opts.castWith;
   o.tapped = !!opts.tapped || reps.some((r) => 'entersTapped' in r.replace);
   o.controlledSince = s.turn;
   if (view(s)(o).types.includes('Land')) s.turnLog.landsEntered[o.controller]++;

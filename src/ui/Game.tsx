@@ -139,7 +139,9 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
     const c = characteristics(s, s.objects[id]!);
     return c.types.includes('Land') && !c.types.includes('Creature');
   });
-  useEffect(() => { if (intent && plainPayment) send(toChoice(intent)); }, [intent, plainPayment]);
+  // A free cast (an effect's "without paying its mana cost") has no payment to confirm either.
+  const straightOn = plainPayment || (!!intent?.free && need?.kind === 'confirm');
+  useEffect(() => { if (intent && straightOn) send(toChoice(intent)); }, [intent, straightOn]);
   const startIntent = (i: Intent, drop: Target | null = null) => {
     if (!actor) return;
     setViewing(null); setModes([]); setX(0); setPicking([]);
@@ -188,6 +190,7 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
       }
       case 'bottom': case 'discard': marks = { ...marks, selectable: new Set(s.zones[`${d.player}.hand`]), selected: new Set(chosen) }; break;
       case 'pick': marks = { ...marks, selectable: new Set(d.options), selected: new Set(chosen) }; break;
+      case 'castFree': marks = { ...marks, selectable: new Set(d.options) }; break;
       case 'legend': marks = { ...marks, selectable: new Set(d.objects), selected: new Set(chosen) }; break;
       default: break;
     }
@@ -219,6 +222,7 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
       }
       case 'bottom': case 'discard': toggleChosen(t, d.count); return;
       case 'pick': toggleChosen(t, d.max); return;
+      case 'castFree': startIntent({ kind: 'cast', object: t, targets: [], free: true }); return;
       case 'legend': setChosen([t]); return;
       default: return;
     }
@@ -264,7 +268,7 @@ export function GameScreen({ session, colors, onChange, onExit, onRematch }: {
   // ----- the prompt panel
   const answering: Answering = { chosen, toggleChosen, atk, blocks, armed, split, setSplit, order, picking, onPick };
   const prompt = off || !d ? null
-    : intent && need && actor ? <IntentPrompt {...{ s, actor, intent, need, setIntent, picking, setPicking, pickTarget, pickCost, modes, setModes, x, setX, preview, plainPayment, send, confirm: toChoice(intent) }} />
+    : intent && need && actor ? <IntentPrompt {...{ s, actor, intent, need, setIntent, picking, setPicking, pickTarget, pickCost, modes, setModes, x, setX, preview, plainPayment: straightOn, send, confirm: toChoice(intent) }} />
     : <DecisionPrompt s={s} d={d} a={answering} send={send} />;
 
   const orderBand = !off && d?.kind === 'triggerOrder' ? (

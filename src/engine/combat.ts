@@ -15,7 +15,7 @@ const name = (s: GameState, o: GameObject) => characteristics(s, o).name;
 
 export function canAttack(s: GameState, o: GameObject): boolean {
   return o.zone === 'battlefield' && o.controller === s.active && isType(s, o, 'Creature') && !o.tapped
-    && !summoningSick(s, o) && !hasKeyword(s, o, 'defender') && !hasKeyword(s, o, "can't attack or block");
+    && !summoningSick(s, o) && (!hasKeyword(s, o, 'defender') || hasKeyword(s, o, "can attack as though it didn't have defender")) && !hasKeyword(s, o, "can't attack or block");
 }
 
 export function canBlock(s: GameState, blocker: GameObject, attacker: GameObject): boolean {

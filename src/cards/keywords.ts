@@ -32,3 +32,10 @@ export const equip = (cost: string): ActivatedAbility => ({
   cost: { mana: cost }, timing: 'sorcery', targets: [{ objects: { types: ['Creature'], controller: 'you' } }],
   effects: [{ attach: { target: 0 } }], text: `Equip ${cost}`,
 });
+
+/** Ward {N} (702.21): "Whenever this permanent becomes the target of a spell or ability an opponent controls, counter it unless that player pays {N}." */
+export const ward = (cost: string): TriggeredAbility => ({
+  when: { becomesTarget: {}, by: 'opponent' }, self: true,
+  effects: [{ counterUnlessPays: cost, on: 'eventSource' }],
+  text: `Ward ${cost}`,
+});

@@ -94,6 +94,8 @@ export interface GameObject {
   playableTurn?: number;
   /** The colour chosen as it entered (Thriving lands). */
   chosenColor?: Color;
+  /** The additional-cost option it was cast with, kept by the permanent it becomes ("if her additional cost was paid"). */
+  castWith?: number;
   /** For a spell on the stack: counters the permanent enters with (mana with a rider was spent on it). */
   entersWithCounters?: Record<string, number>;
   /** For a spell on the stack: the modes chosen and the value of X. */
@@ -115,6 +117,8 @@ export interface StackAbility {
   eventObject?: ObjectId;
   /** How much of something the event was about ("that much": the counters put). */
   eventAmount?: number;
+  /** The spell or ability the event came from (a target chosen by it). */
+  eventSource?: ObjectId;
   /** What the source was attached to as the ability was activated (a sacrificed Aura's "enchanted creature"). */
   attachedTo?: ObjectId;
 }
@@ -141,6 +145,7 @@ export interface PendingTrigger {
   index: number;
   eventObject?: ObjectId;
   eventAmount?: number;
+  eventSource?: ObjectId;
   /** Its controller has put it in order among their other triggers. */
   ordered?: boolean;
 }
@@ -161,9 +166,12 @@ export interface Resolving {
   created?: ObjectId;
   attachedTo?: ObjectId;
   eventAmount?: number;
+  eventSource?: ObjectId;
   /** What the last "choose" picked, and the cards discarded, for later effects ("it", "this way"). */
   chosen?: ObjectId[];
   discarded?: ObjectId[];
+  /** A free cast it offered was answered (cast or declined). */
+  castFreeAnswered?: boolean;
   /** Cards an effect looked at, kept across its decision. */
   looked?: ObjectId[];
 }
@@ -209,7 +217,11 @@ export type Decision =
    */
   | { kind: 'pick'; player: PlayerId; from: ObjectId[]; options: ObjectId[]; min: number; max: number; orNone?: boolean; text: string; done?: string; none?: string }
   /** The general choice among worded options ("Put it onto the battlefield", "Leave it on top"), with any cards it's about, shown to the chooser. */
-  | { kind: 'choose'; player: PlayerId; text: string; options: string[]; cards?: ObjectId[] };
+  | { kind: 'choose'; player: PlayerId; text: string; options: string[]; cards?: ObjectId[] }
+  /** Divide `total` (counters, damage) among `options`, each getting any number, all of it given out. */
+  | { kind: 'distribute'; player: PlayerId; options: ObjectId[]; total: number; text: string }
+  /** "You may cast a … spell from your hand without paying its mana cost": a cast of one of `options`, or no. */
+  | { kind: 'castFree'; player: PlayerId; options: ObjectId[] };
 
 export type Choice =
   | { kind: 'keep' }
@@ -230,6 +242,7 @@ export type Choice =
   | { kind: 'arrange'; top: ObjectId[]; away: ObjectId[] }
   | { kind: 'pick'; cards: ObjectId[] }
   | { kind: 'option'; index: number }
+  | { kind: 'distribute'; amounts: Record<ObjectId, number> }
   | { kind: 'yes' }
   | { kind: 'no' }
   | { kind: 'attack'; attackers: ObjectId[] }

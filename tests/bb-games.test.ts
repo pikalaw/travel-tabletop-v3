@@ -67,6 +67,19 @@ function randomAnswer(s: GameState): Choice {
     case 'chooseColor': return { kind: 'color', color: pick(d.options) };
     case 'arrange': { const away = some(d.cards); return { kind: 'arrange', top: d.cards.filter((c) => !away.includes(c)), away }; }
     case 'choose': return { kind: 'option', index: n(d.options.length) };
+    case 'distribute': {
+      const amounts: Record<string, number> = {};
+      for (let k = 0; k < d.total; k++) { const id = pick(d.options); amounts[id] = (amounts[id] ?? 0) + 1; }
+      return { kind: 'distribute', amounts };
+    }
+    case 'castFree': {
+      const c = pick(legalActions(s));
+      if (c.kind !== 'cast') return c;
+      const opts = targetOptions(s, d.player, c.object);
+      const spell = s.setup.cards[s.objects[c.object]!.card]?.script?.spell;
+      if (spell?.modes) return { kind: 'no' };
+      return { ...c, ...(opts.length ? { targets: opts.map((t) => (t.legal.length ? [pick(t.legal)] : [])) } : {}) };
+    }
     case 'pick': {
       if (d.orNone && n(2)) return { kind: 'pick', cards: [] };
       const cards = some(d.options, d.max);
@@ -82,7 +95,7 @@ function playOut(g: Game, limit: number): Game {
     const tried = answer(s, c);
     if ('refused' in tried) {
       // Random casts and blocks can be illegal as a whole (a mode without targets, menace): do nothing instead.
-      const fallback: Partial<Record<string, Choice>> = { priority: { kind: 'pass' }, payOrElse: { kind: 'no' }, blockers: { kind: 'block', blocks: [] }, attackers: { kind: 'attack', attackers: [] } };
+      const fallback: Partial<Record<string, Choice>> = { priority: { kind: 'pass' }, payOrElse: { kind: 'no' }, castFree: { kind: 'no' }, blockers: { kind: 'block', blocks: [] }, attackers: { kind: 'attack', attackers: [] } };
       const f = fallback[s.decision!.kind];
       if (!f) throw new Error(`refused ${JSON.stringify(c)} for ${JSON.stringify(s.decision)}: ${tried.refused}`);
       c = f;

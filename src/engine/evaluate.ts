@@ -44,6 +44,8 @@ export interface Context {
   eventAmount?: number;
   /** In a static effect's amount, the object it's being applied to. */
   affected?: ObjectId;
+  /** The spell or ability a trigger's event came from (ward's "that spell"). */
+  eventSource?: ObjectId;
   /** What this resolution's last choice picked, and the cards it discarded. */
   chosen?: ObjectId[];
   discarded?: ObjectId[];
@@ -102,6 +104,8 @@ export function objects(s: GameState, view: View, ref: ObjectRef, ctx: Context):
   if (ref === 'triggerObject') return ctx.eventObject && s.objects[ctx.eventObject] ? [s.objects[ctx.eventObject]!] : [];
   if (ref === 'created') return ctx.created && s.objects[ctx.created] ? [s.objects[ctx.created]!] : [];
   if (ref === 'affected') return ctx.affected && s.objects[ctx.affected] ? [s.objects[ctx.affected]!] : [];
+  if (ref === 'eventSource') return ctx.eventSource && s.objects[ctx.eventSource] ? [s.objects[ctx.eventSource]!] : [];
+  if (typeof ref === 'object' && 'ids' in ref) return ref.ids.flatMap((id) => (s.objects[id] ? [s.objects[id]!] : []));
   if (ref === 'chosen') return (ctx.chosen ?? []).flatMap((id) => (s.objects[id] ? [s.objects[id]!] : []));
   if (ref === 'thisCard') {
     const id = s.objects[ctx.source] ? ctx.source : s.lastKnown[ctx.source]?.movedTo;
@@ -148,6 +152,8 @@ export function holds(s: GameState, view: View, c: Condition, ctx: Context): boo
   if ('not' in c) return !holds(s, view, c.not, ctx);
   if ('any' in c) return c.any.some((x) => holds(s, view, x, ctx));
   if ('drawnThisTurn' in c) return s.turnLog.drawn[ctx.controller] >= c.drawnThisTurn;
+  if ('chosen' in c) return (ctx.chosen ?? []).some((id) => !!s.objects[id] && matches(s, view, s.objects[id]!, { ...c.chosen, zone: c.chosen.zone ?? 'graveyard' }, ctx));
+  if ('costPaid' in c) return s.objects[ctx.source]?.castWith === c.costPaid;
   if ('discarded' in c) return (ctx.discarded ?? []).some((id) => !!s.objects[id] && matches(s, view, s.objects[id]!, { ...c.discarded, zone: c.discarded.zone ?? 'graveyard' }, ctx));
   if ('all' in c) return c.all.every((x) => holds(s, view, x, ctx));
   if ('exists' in c) return select(s, view, c.exists, ctx).length > 0;

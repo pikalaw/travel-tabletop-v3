@@ -59,6 +59,8 @@ async function playRandomly(page: Page, seed: number, steps: number) {
     if (await any('[data-testid^=mode-]:enabled')) continue;
     if (await any('[data-testid^=cost-]:enabled')) continue;
     if (await any('[data-testid^=option-]')) continue;
+    if (await vis('cast-nothing')) { await page.getByTestId('cast-nothing').click(); continue; }
+    if (await any('[data-testid^=more-]:enabled')) continue; // distribute counters, one at a time
     if (await any('.prompt .chipbtn')) continue;
     if (await vis('yes')) {
       if ((await enabled('yes')) && rnd(2)) await page.getByTestId('yes').click();
@@ -146,7 +148,8 @@ test('a player resigns from the menu, and the other wins', async ({ page }) => {
 const BEGINNER_BOX = ['bb-firebending', 'bb-attacking', 'bb-zuko-tutorial', 'bb-waterbending', 'bb-allies', 'bb-spells', 'bb-earthbending', 'bb-counters', 'bb-big-creatures', 'bb-aang-tutorial'];
 const JUMPSTART_EARTH = ['js-reinforced-1', 'js-earthbending-1', 'js-toph', 'js-at-the-zoo', 'js-earth-kingdom-1', 'js-reinforced-2', 'js-earth-kingdom-2'];
 const JUMPSTART_WATER = ['js-katara', 'js-adept-2', 'js-adaptive', 'js-soaring-1', 'js-kyoshi', 'js-earth-rumble-1', 'js-earth-rumble-2'];
-for (const [seed, packets] of [[11, BEGINNER_BOX], [12, BEGINNER_BOX], [13, JUMPSTART_EARTH], [14, JUMPSTART_WATER]] as const) {
+const JUMPSTART_LESSONS = ['js-lessons-1', 'js-spirit', 'js-wise-1', 'js-librarian', 'js-learning-2', 'js-soaring-2', 'js-adept-1'];
+for (const [seed, packets] of [[11, BEGINNER_BOX], [12, BEGINNER_BOX], [13, JUMPSTART_EARTH], [14, JUMPSTART_WATER], [15, JUMPSTART_LESSONS]] as const) {
   test(`random play through the screen never shows a hand to the wrong player (seed ${seed})`, async ({ page }) => {
     test.setTimeout(240_000);
     const errors: string[] = [];

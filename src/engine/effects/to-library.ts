@@ -1,8 +1,9 @@
 import type { ObjectRef } from '../abilities';
+import { move, zoneOf } from '../state';
 import { leaveBattlefield } from '../zones';
 import type { Handler } from './kit';
 
-/** "Its owner puts it into their library second from the top or on the bottom": the owner chooses. */
+/** "Its owner puts it into their library second from the top or on the bottom": the owner chooses. From any zone ("target card from a graveyard"). */
 export interface ToOwnersLibrary { toOwnersLibrary: ObjectRef; places: ('secondFromTop' | 'bottom')[] }
 
 const WORDS = { secondFromTop: 'Second from the top', bottom: 'On the bottom' } as const;
@@ -10,7 +11,7 @@ const WORDS = { secondFromTop: 'Second from the top', bottom: 'On the bottom' } 
 export const toOwnersLibrary: Handler<ToOwnersLibrary> = (e, r) => {
   const { s } = r;
   const [o] = r.objs(e.toOwnersLibrary);
-  if (!o || o.zone !== 'battlefield') return;
+  if (!o || o.zone === 'stack' || o.zone.endsWith('.library')) return;
   const owner = o.owner;
   let place = e.places[0]!;
   if (e.places.length > 1) {
@@ -19,7 +20,7 @@ export const toOwnersLibrary: Handler<ToOwnersLibrary> = (e, r) => {
     place = e.places[picked.index]!;
   }
   const name = r.cardName(o.id);
-  const [id] = leaveBattlefield(s, [o.id], 'library'); // onto the top
+  const [id] = o.zone === 'battlefield' ? leaveBattlefield(s, [o.id], 'library') : [move(s, o.id, zoneOf(owner, 'library')).id]; // onto the top
   if (!id) return; // a token ceases to exist
   const lib = s.zones[`${owner}.library`];
   lib.splice(lib.indexOf(id), 1);

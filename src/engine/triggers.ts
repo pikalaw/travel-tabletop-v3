@@ -21,7 +21,9 @@ export type GameEventKind =
   | { kind: 'dealsCombatDamageToPlayer'; object: ObjectId }
   | { kind: 'drew'; player: PlayerId; nth: number }
   | { kind: 'toGraveyard'; object: ObjectId }
-  | { kind: 'countersPut'; object: ObjectId; counter: string; n: number; player: PlayerId };
+  | { kind: 'countersPut'; object: ObjectId; counter: string; n: number; player: PlayerId }
+  | { kind: 'becomesTarget'; object: ObjectId; by: ObjectId; player: PlayerId }
+  | { kind: 'toLibrary'; object: ObjectId };
 
 /** The keyword library's triggered keywords (702): written once, used by every card that has them. */
 const KEYWORD_TRIGGERS: Record<string, TriggeredAbility> = {
@@ -82,6 +84,12 @@ function eventMatches(s: GameState, v: View, w: TriggerEvent, self: boolean | un
   }
   if ('drawsNth' in w) return ev.kind === 'drew' && ev.player === ctx.controller && ev.nth === w.drawsNth;
   if ('toGraveyard' in w) return ev.kind === 'toGraveyard' && filterOn(w.toGraveyard);
+  if ('becomesTarget' in w) {
+    if (ev.kind !== 'becomesTarget') return false;
+    if ((w.by === 'you' && ev.player !== ctx.controller) || (w.by === 'opponent' && ev.player === ctx.controller)) return false;
+    return filterOn(w.becomesTarget);
+  }
+  if ('toLibrary' in w) return ev.kind === 'toLibrary';
   if ('countersPut' in w) return ev.kind === 'countersPut' && ev.counter === w.kind && ev.player === ctx.controller && filterOn(w.countersPut);
   if ('step' in w) return ev.kind === 'step' && ev.step === w.step && (w.whose === 'any' || s.active === ctx.controller);
   return false;
@@ -100,7 +108,7 @@ export const finalChapter = (s: GameState, o: GameObject) => Math.max(0, ...(s.s
 /** Reports an event: every matching triggered ability on the battlefield, and every delayed one, waits to go on the stack. */
 export function fire(s: GameState, ev: GameEventKind): void {
   const v = view(s);
-  const about = 'object' in ev ? { eventObject: ev.object } : {};
+  const about = { ...('object' in ev ? { eventObject: ev.object } : {}), ...(ev.kind === 'becomesTarget' ? { eventSource: ev.by } : {}) };
   // "That much" (counters put), or a cast spell's mana value as it was cast ("that spell's mana value").
   const spellValue = ev.kind === 'cast' && s.objects[ev.object] ? manaValue(s.setup.cards[s.objects[ev.object]!.card]!.manaCost) : undefined;
   const amount = ev.kind === 'countersPut' ? { eventAmount: ev.n } : spellValue !== undefined ? { eventAmount: spellValue } : {};

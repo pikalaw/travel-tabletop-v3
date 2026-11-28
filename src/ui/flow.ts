@@ -23,6 +23,8 @@ export interface Intent {
   x?: number;
   targets: Target[][];
   tapping?: ObjectId[];
+  /** Cast without paying its mana cost, as an effect allows (X is 0, no payment step). */
+  free?: boolean;
 }
 
 export type Need =
@@ -46,6 +48,7 @@ export function describeSpec(spec: TargetSpec): string {
   if ('players' in spec) return spec.players === 'opponent' ? 'target opponent' : 'target player';
   const f = spec.objects;
   const n = spec.count ?? 1;
+  if (n === 'x') return `up to X target ${(f.types ?? ['permanent']).join(' or ').toLowerCase()}s`;
   const what = [f.tapped ? 'tapped' : '', f.attacking ? 'attacking' : '', f.notTypes?.includes('Land') ? 'nonland' : '', (f.types ?? f.subtypes ?? ['permanent']).join(' or ').toLowerCase()].filter(Boolean).join(' ');
   const whose = f.controller === 'you' ? ' you control' : f.controller === 'opponent' ? ' an opponent controls' : '';
   return `${spec.upTo ? `up to ${n} ` : n > 1 ? `${n} ` : ''}target ${what}${whose}`;
@@ -53,7 +56,7 @@ export function describeSpec(spec: TargetSpec): string {
 
 /** The next question the intent needs answered, or the confirm step. */
 export function nextNeed(s: GameState, p: PlayerId, i: Intent): Need {
-  const ctx = { controller: p, source: i.object };
+  const ctx = { controller: p, source: i.object, ...(i.x !== undefined ? { x: i.x } : {}) };
   if (i.kind === 'cast') {
     const spell = scriptOf(s, i.object)?.spell;
     if (spell?.modes && !i.modes) {
@@ -66,13 +69,14 @@ export function nextNeed(s: GameState, p: PlayerId, i: Intent): Need {
     if (spell?.costOptions && i.cost === undefined) {
       return { kind: 'cost', options: spell.costOptions.map((o, k) => ({ text: o.text, ok: !whyNotCast(s, p, i.object, undefined, undefined, i.x ?? 0, k) })) };
     }
-    if (i.x === undefined && s.setup.cards[s.objects[i.object]!.card]!.manaCost.some((m) => m.kind === 'x')) return { kind: 'x' };
+    const xCost = s.setup.cards[s.objects[i.object]!.card]!.manaCost.some((m) => m.kind === 'x') || spell?.additionalCost?.waterbend === 'x';
+    if (i.x === undefined && xCost && !i.free) return { kind: 'x' };
   }
   const specs = specsOf(s, i);
   if (i.targets.length < specs.length) {
     const k = i.targets.length;
     const spec = specs[k]!;
-    const count = 'objects' in spec ? spec.count ?? 1 : 1;
+    const count = 'objects' in spec ? (spec.count === 'x' ? i.x ?? 0 : spec.count ?? 1) : 1;
     return { kind: 'target', spec: k, legal: legalTargets(s, spec, ctx), count, upTo: 'objects' in spec && !!spec.upTo, text: describeSpec(spec) };
   }
   // Costs that take objects: asked only when there is a real choice.

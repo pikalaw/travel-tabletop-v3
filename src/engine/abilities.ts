@@ -12,7 +12,7 @@ import type { Color, Step } from './types';
 // ----- Which objects and players --------------------------------------------------------------
 
 /** Players, relative to an ability's controller. */
-export type PlayerRef = 'you' | 'opponent' | 'each' | { target: number };
+export type PlayerRef = 'you' | 'opponent' | 'each' | { target: number } | { controllerOf: ObjectRef };
 
 /** A filter over objects. Every field present must hold. */
 export interface Filter {
@@ -60,7 +60,9 @@ export type ObjectRef =
   | 'created'                        // the token this effect list created last ("put a counter on it")
   | 'affected'                       // in a static effect's amount: the object it's being applied to ("each of its creature types")
   | 'chosen'                         // the objects this resolution's last choice picked ("sacrifice a land")
-  | 'thisCard';                      // the source card in its new zone after it left the battlefield ("return this card")
+  | 'thisCard'                       // the source card in its new zone after it left the battlefield ("return this card")
+  | 'eventSource'                    // the spell or ability a trigger's event came from (ward: "that spell")
+  | { ids: string[] };               // these objects, fixed when an effect made them ("return those cards")
 
 // ----- Numbers ---------------------------------------------------------------------------------
 
@@ -98,6 +100,10 @@ export type Condition =
   | 'duringCombat'
   /** A card this resolution discarded matches ("when you discard a nonland card this way"). */
   | { discarded: Filter }
+  /** A card this resolution's last choice or mill acted on matches ("if a Lesson card is milled this way"). */
+  | { chosen: Filter }
+  /** The source permanent was cast with this additional-cost option ("unless her additional cost was paid"). */
+  | { costPaid: number }
   | { not: Condition }
   | { any: Condition[] }
   | { all: Condition[] }
@@ -117,7 +123,7 @@ export type { Effect } from './effects';
 
 /** What may be targeted: a filter over objects, or players. */
 export type TargetSpec =
-  | { objects: Filter; count?: number; upTo?: boolean }
+  | { objects: Filter; count?: number | 'x'; upTo?: boolean }
   | { players: 'any' | 'opponent' }
   | { any: true };          // "any target": a creature, a player (no planeswalkers or battles in the pool)
 
@@ -127,8 +133,8 @@ export interface Cost {
   mana?: string;             // e.g. "{2}{R}"
   /** Discard this card (cycling, from the hand). */
   discardSelf?: boolean;
-  /** Waterbend {N} (701.67): generic mana you may pay in part by tapping your untapped artifacts and creatures, one each. */
-  waterbend?: number;
+  /** Waterbend {N} (701.67): generic mana you may pay in part by tapping your untapped artifacts and creatures, one each. 'x': the X chosen. */
+  waterbend?: number | 'x';
   tap?: boolean;
   sacrificeSelf?: boolean;
   payLife?: number;
@@ -194,6 +200,10 @@ export type TriggerEvent =
   | { toGraveyard: Filter }
   /** "Whenever you put one or more +1/+1 counters on a creature": counters of `kind` put by an effect `you` control. */
   | { countersPut: Filter; kind: string }
+  /** "Becomes the target of a spell or ability an opponent controls" (ward, Monk Gyatso). */
+  | { becomesTarget: Filter; by: 'you' | 'opponent' | 'any' }
+  /** "Whenever one or more cards are put into a library from anywhere". */
+  | { toLibrary: true }
   /** A reflexive trigger's (603.12): it never matches an event; its effect puts it on the stack. */
   | { reflexive: true }
   /** A Saga's chapter ability: the `chapter` it is (714.2b). */

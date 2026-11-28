@@ -53,6 +53,7 @@ export function move(s: GameState, id: ObjectId, to: ZoneId, opts: { tapped?: bo
   const dest: ZoneId = to === 'battlefield' || to === 'stack' ? to : zoneOf(o.owner, to.split('.')[1] as 'library');
   const n = createObject(s, o.card, o.owner, dest);
   if (opts.bottom) { s.zones[dest].pop(); s.zones[dest].unshift(n.id); }
+  if (dest.endsWith('.library') && !o.zone.endsWith('.library')) fire(s, { kind: 'toLibrary', object: n.id });
   if (dest === 'battlefield' || dest === 'stack') n.controller = opts.controller ?? o.controller;
   n.tapped = !!opts.tapped;
   return n;

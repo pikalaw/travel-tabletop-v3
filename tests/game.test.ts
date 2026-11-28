@@ -59,7 +59,7 @@ function otherDecision(s: GameState): Choice {
   const d = s.decision!;
   switch (d.kind) {
     case 'triggerOrder': return { kind: 'order', triggers: d.triggers };
-    case 'triggerTargets': return { kind: 'targets', targets: triggerTargetOptions(s).map((o) => o.legal.slice(0, 'objects' in o.spec ? o.spec.count ?? 1 : 1)) };
+    case 'triggerTargets': return { kind: 'targets', targets: triggerTargetOptions(s).map((o) => o.legal.slice(0, 'objects' in o.spec ? (o.spec.count === 'x' ? 0 : o.spec.count ?? 1) : 1)) };
     case 'may': return { kind: 'yes' };
     case 'pick': return { kind: 'pick', cards: d.options.slice(0, d.min) };
     default: throw new Error(`no answer for ${d.kind}`);

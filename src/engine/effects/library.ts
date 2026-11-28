@@ -11,7 +11,13 @@ export interface ExileTopPlayable { exileTopPlayable: true }
 export interface ShuffleIntoLibrary { shuffleIntoLibrary: ObjectRef }
 
 export const mill: Handler<Mill> = (e, r) => {
-  for (const p of r.players(e.mill)) for (let i = r.n(e.n); i > 0; i--) { const id = top(r.s, p); if (id) move(r.s, id, zoneOf(p, 'graveyard')); }
+  const milled: string[] = [];
+  for (const p of r.players(e.mill)) {
+    const k = r.n(e.n);
+    for (let i = k; i > 0; i--) { const id = top(r.s, p); if (id) milled.push(move(r.s, id, zoneOf(p, 'graveyard')).id); }
+    if (k > 0) r.log(`${r.playerName(p)} mills ${k}`);
+  }
+  r.s.resolving!.chosen = milled; // "a card milled this way"
 };
 
 export const exileTopPlayable: Handler<ExileTopPlayable> = (_e, r) => {

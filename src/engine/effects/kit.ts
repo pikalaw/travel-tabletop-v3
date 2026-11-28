@@ -47,7 +47,7 @@ export const isPlayer = (t: Target): t is PlayerId => t === 'p1' || t === 'p2';
 
 function contextOf(s: GameState): Context {
   const r = s.resolving!;
-  return { controller: r.controller, source: r.source, targets: r.targets, ...(r.eventObject ? { eventObject: r.eventObject } : {}), ...(r.eventAmount !== undefined ? { eventAmount: r.eventAmount } : {}), ...(r.chosen ? { chosen: r.chosen } : {}), ...(r.discarded ? { discarded: r.discarded } : {}), ...(r.x !== undefined ? { x: r.x } : {}), ...(r.created ? { created: r.created } : {}), ...(r.attachedTo ? { attachedTo: r.attachedTo } : {}) };
+  return { controller: r.controller, source: r.source, targets: r.targets, ...(r.eventObject ? { eventObject: r.eventObject } : {}), ...(r.eventAmount !== undefined ? { eventAmount: r.eventAmount } : {}), ...(r.chosen ? { chosen: r.chosen } : {}), ...(r.eventSource ? { eventSource: r.eventSource } : {}), ...(r.discarded ? { discarded: r.discarded } : {}), ...(r.x !== undefined ? { x: r.x } : {}), ...(r.created ? { created: r.created } : {}), ...(r.attachedTo ? { attachedTo: r.attachedTo } : {}) };
 }
 
 /** The Resolution for the effect at s.resolving.pc, with the answer to its decision if there is one. */
@@ -58,6 +58,7 @@ export function resolution(s: GameState, choice: Choice | undefined): Resolution
     if (ref === 'you') return [ctx.controller];
     if (ref === 'opponent') return [other(ctx.controller)];
     if (ref === 'each') return [...PLAYERS];
+    if ('controllerOf' in ref) return objects(s, v, ref.controllerOf, ctx).slice(0, 1).map((o) => o.controller);
     return (ctx.targets?.[ref.target] ?? []).filter(isPlayer);
   };
   const objs = (ref: ObjectRef) => objects(s, v, ref, ctx);
@@ -65,7 +66,7 @@ export function resolution(s: GameState, choice: Choice | undefined): Resolution
     s, ctx, v, players, objs,
     n: (a) => amount(s, v, a, ctx),
     recipients: (ref) => {
-      if (ref === 'you' || ref === 'opponent' || ref === 'each') return players(ref);
+      if (ref === 'you' || ref === 'opponent' || ref === 'each' || (typeof ref === 'object' && 'controllerOf' in ref)) return players(ref);
       if (typeof ref === 'object' && 'target' in ref) return (ctx.targets?.[ref.target] ?? []).filter((t) => isPlayer(t) || s.objects[t]);
       return objs(ref).map((o) => o.id);
     },

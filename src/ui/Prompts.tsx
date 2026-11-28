@@ -45,7 +45,8 @@ export function asking(s: GameState): string {
     case 'chooseColor': return `choose a colour for ${nameOf(s, d.object)}`;
     case 'arrange': return d.to === 'bottom' ? 'scry' : 'surveil';
     case 'payOrElse': return `pay ${payWords(d)}?`;
-    case 'pick': case 'choose': return d.text.toLowerCase();
+    case 'pick': case 'choose': case 'distribute': return d.text.toLowerCase();
+    case 'castFree': return 'cast a spell for free?';
   }
 }
 
@@ -168,6 +169,30 @@ export function DecisionPrompt({ s, d, a, send }: { s: GameState; d: Decision; a
         <p>{d.text}</p>
         {d.cards && <CardList s={s} ids={d.cards} selectable={new Set()} selected={new Set()} onPick={() => undefined} />}
         <div class="menu">{d.options.map((o, i) => <button key={i} class={`btn ${i === 0 ? 'primary' : ''}`} onClick={() => send({ kind: 'option', index: i })} data-testid={`option-${i}`}>{o}</button>)}</div>
+      </div>
+    );
+    case 'distribute': {
+      const given = d.options.reduce((n, id) => n + (a.split[id] ?? 0), 0);
+      return (
+        <div class="prompt">
+          <p>{d.text} ({given}/{d.total})</p>
+          {d.options.map((id) => (
+            <div key={id} class="row stepper">
+              <span>{nameOf(s, id)}</span>
+              <button class="btn" onClick={() => a.setSplit((v) => ({ ...v, [id]: Math.max(0, (v[id] ?? 0) - 1) }))}>−</button>
+              <b>{a.split[id] ?? 0}</b>
+              <button class="btn" disabled={given >= d.total} onClick={() => a.setSplit((v) => ({ ...v, [id]: (v[id] ?? 0) + 1 }))} data-testid={`more-${nameOf(s, id)}`}>+</button>
+            </div>
+          ))}
+          <div class="row"><button class="btn primary" disabled={given !== d.total} onClick={() => send({ kind: 'distribute', amounts: a.split })} data-testid="done">Done</button></div>
+        </div>
+      );
+    }
+    case 'castFree': return (
+      <div class="prompt">
+        <p>You may cast one of these without paying its mana cost. Tap a card to cast it.</p>
+        <CardList s={s} ids={d.options} selectable={new Set(d.options)} selected={new Set()} onPick={(id) => a.onPick(id)} />
+        <div class="row"><button class="btn" onClick={() => send({ kind: 'no' })} data-testid="cast-nothing">Cast nothing</button></div>
       </div>
     );
     case 'priority': return null;

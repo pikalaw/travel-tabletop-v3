@@ -34,7 +34,8 @@ export function isLegalTarget(s: GameState, spec: TargetSpec, ctx: Context, t: T
   return matches(s, view(s), o, f, ctx) && targetable(s, ctx)(o);
 }
 
-const countOf = (spec: TargetSpec) => ('objects' in spec ? spec.count ?? 1 : 1);
+/** How many targets a spec takes; "up to X target creatures" takes X, as chosen. */
+const countOf = (spec: TargetSpec, ctx: Context) => ('objects' in spec ? (spec.count === 'x' ? ctx.x ?? 0 : spec.count ?? 1) : 1);
 
 /** Why a chosen set of targets is illegal, or null (601.2c). */
 export function checkTargets(s: GameState, specs: readonly TargetSpec[], chosen: Target[][] | undefined, ctx: Context): string | null {
@@ -42,7 +43,7 @@ export function checkTargets(s: GameState, specs: readonly TargetSpec[], chosen:
   if (got.length !== specs.length) return specs.length ? 'Choose targets' : 'This has no targets';
   for (const [i, spec] of specs.entries()) {
     const ts = got[i]!;
-    const n = countOf(spec);
+    const n = countOf(spec, ctx);
     const upTo = 'objects' in spec && spec.upTo;
     if (upTo ? ts.length > n : ts.length !== n) return `Choose ${upTo ? 'up to ' : ''}${n} target${n > 1 ? 's' : ''}`;
     if (new Set(ts).size !== ts.length) return 'The same target is chosen twice for one word "target"';
@@ -53,7 +54,7 @@ export function checkTargets(s: GameState, specs: readonly TargetSpec[], chosen:
 
 /** Whether a spell or ability with these specs could be put on the stack at all: every required target has a choice. */
 export function hasTargets(s: GameState, specs: readonly TargetSpec[], ctx: Context): boolean {
-  return specs.every((spec) => ('objects' in spec && spec.upTo) || legalTargets(s, spec, ctx).length >= countOf(spec));
+  return specs.every((spec) => ('objects' in spec && spec.upTo) || legalTargets(s, spec, ctx).length >= countOf(spec, ctx));
 }
 
 /** If every spec has exactly the choice it needs and no more, that choice; otherwise null. */
@@ -62,7 +63,7 @@ export function onlyChoice(s: GameState, specs: readonly TargetSpec[], ctx: Cont
   for (const spec of specs) {
     const legal = legalTargets(s, spec, ctx);
     if ('objects' in spec && spec.upTo) return null;
-    if (legal.length !== countOf(spec)) return null;
+    if (legal.length !== countOf(spec, ctx)) return null;
     out.push(legal);
   }
   return out;

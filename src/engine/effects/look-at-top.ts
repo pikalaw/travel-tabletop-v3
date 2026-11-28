@@ -10,7 +10,11 @@ import type { Handler } from './kit';
  * to the bottom in a random order, or (mill) all go to the graveyard first. `otherwise` runs if
  * none was taken ("If you don't, put a +1/+1 counter on this creature").
  */
-export interface LookAtTop { lookAtTop: Amount; mayTake: Filter; rest: 'bottomRandom' | 'mill'; otherwise?: Effect[] }
+export interface LookAtTop {
+  lookAtTop: Amount; mayTake: Filter; rest: 'bottomRandom' | 'bottom' | 'mill'; otherwise?: Effect[];
+  /** "Put one of those cards into your hand" (not "you may"); `all`: every one goes into the hand. */
+  mustTake?: boolean; all?: boolean;
+}
 
 export const lookAtTop: Handler<LookAtTop> = (e, r) => {
   const { s, v, ctx } = r;
@@ -24,11 +28,23 @@ export const lookAtTop: Handler<LookAtTop> = (e, r) => {
     if (e.rest === 'mill') { seen = seen.map((id) => move(s, id, zoneOf(p, 'graveyard')).id); r.log(`${r.playerName(p)} mills ${k}`); }
     res.looked = seen;
     const options = seen.filter((id) => matches(s, v, s.objects[id]!, { ...e.mayTake, zone: e.rest === 'mill' ? 'graveyard' : 'library' }, ctx));
-    return r.ask({ kind: 'pick', player: p, from: seen, options, min: 0, max: 1, text: e.rest === 'mill' ? 'You may put one into your hand' : 'You may reveal one and put it into your hand' });
+    if (e.all) {
+      for (const id of options) move(s, id, zoneOf(p, 'hand'));
+      r.log(`${r.playerName(p)} puts ${options.length} card${options.length === 1 ? '' : 's'} from the top of their library into their hand`);
+      delete res.looked;
+      return;
+    }
+    const must = e.mustTake && options.length > 0;
+    return r.ask({ kind: 'pick', player: p, from: seen, options, min: must ? 1 : 0, max: 1, text: must ? 'Put one into your hand' : e.rest === 'mill' ? 'You may put one into your hand' : 'You may reveal one and put it into your hand' });
   }
   const seen = res.looked ?? [];
   delete res.looked;
   for (const id of picked.cards) { r.log(`${r.playerName(p)} ${e.rest === 'mill' ? 'takes' : 'reveals'} ${r.cardName(id)} and puts it into their hand`); move(s, id, zoneOf(p, 'hand')); }
+  if (e.rest === 'bottom') {
+    const rest = seen.filter((id) => !picked.cards.includes(id));
+    const keep = s.zones[zoneOf(p, 'library')].filter((id) => !rest.includes(id));
+    s.zones[zoneOf(p, 'library')] = [...rest, ...keep];
+  }
   if (e.rest === 'bottomRandom') {
     const [rest, rng] = shuffle(s.rng, seen.filter((id) => !picked.cards.includes(id)));
     s.rng = rng;

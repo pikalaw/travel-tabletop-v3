@@ -14,7 +14,11 @@ import { conditional, may, unlessPays, type If, type May, type UnlessPays } from
 import { continuous, exileIfWouldDie, grant, pump, type Continuous, type ExileIfWouldDie, type Grant, type Pump } from './continuous';
 import { counterSpell, counterUnlessPays, type CounterSpell, type CounterUnlessPays } from './counter-spell';
 import { addCounters, putCountersOf, removeAnyCounters, removeCounters, type AddCounters, type PutCountersOf, type RemoveAnyCounters, type RemoveCounters } from './counters';
+import { castFromHand, type CastFromHand } from './cast-from-hand';
 import { choose, type Choose } from './choose';
+import { distributeCounters, type DistributeCounters } from './distribute';
+import { exileReturns, type ExileReturns } from './exile-returns';
+import { toLibraryTop, type ToLibraryTop } from './to-library-top';
 import { damage, type Damage } from './damage';
 import { delayed, reflexive, type Delayed, type Reflexive } from './delayed';
 import { eachDeals, type EachDeals } from './each-deals';
@@ -51,7 +55,8 @@ export type Effect =
   | Mill | ExileTopPlayable | ShuffleIntoLibrary | Scry | Surveil | Search | LookAtTop | RevealAndDiscard
   | ExtraLand | Optional | Fight | CounterSpell | CounterUnlessPays
   | May | UnlessPays | If
-  | Delayed | Reflexive | EachDeals | PlayerCounter | TopCard | Choose | ToOwnersLibrary;
+  | Delayed | Reflexive | EachDeals | PlayerCounter | TopCard | Choose | ToOwnersLibrary
+  | DistributeCounters | ExileReturns | ToLibraryTop | CastFromHand;
 
 const HANDLERS = {
   draw, discard, damage, gainLife, loseLife,
@@ -63,6 +68,7 @@ const HANDLERS = {
   extraLand, optional, fight, counterSpell, counterUnlessPays,
   may, unlessPays, if: conditional,
   delayed, reflexive, eachDeals, playerCounter, topCard, choose, toOwnersLibrary,
+  distributeCounters, exileReturns, toLibraryTop, castFromHand,
 } satisfies Record<string, Handler<never>>;
 
 type Key = keyof typeof HANDLERS;
